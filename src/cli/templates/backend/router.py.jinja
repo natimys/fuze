@@ -1,0 +1,5 @@
+from fastapi import APIRouter
+
+from .module import module
+
+router = APIRouter(prefix=module.router_prefix, tags=module.router_tags)
