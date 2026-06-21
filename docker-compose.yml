@@ -21,6 +21,8 @@ services:
     build:
       context: .
       dockerfile: src/backend/Dockerfile
+    volumes:
+      - ./src/backend:/app/src/backend
     ports:
       - "8000:8000"
     env_file:

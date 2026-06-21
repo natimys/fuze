@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from importlib.metadata import version
 
 import uvicorn
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -34,7 +34,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 settings = get_settings()
-app = FastAPI(lifespan=lifespan, swagger_ui_init_oauth={})
+app = FastAPI(
+    lifespan=lifespan,
+    title="fuze",
+    docs_url=settings.SWAGGER_PATH,
+    redoc_url=settings.REDOC_PATH,
+)
 
 jwt_security.handle_errors(app)
 
@@ -67,9 +72,10 @@ async def root():
         "version": __version__,
     }
 
-@app.get("/health/")
+
+@app.get("/health/", status_code=200)
 async def health():
-    return Response(status_code=200)
+    return {"message": "ok"}
 
 
 if __name__ == "__main__":

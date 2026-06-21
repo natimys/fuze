@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from core.enums import UserRole
-from .dependencies import get_user_service
-from .dependencies import require_role
+from .dependencies import get_user_service, require_role
 from .module import module
 from .schemas import UserCreate, UserRead, UsersResponse, UserUpdate
 from .service import UserService
