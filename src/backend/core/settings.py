@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRES: int
     ACCESS_TOKEN_EXPIRES: int
 
+    MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_EXTERNAL_ENDPOINT: str = "localhost:9000"
+    MINIO_ACCESS_KEY: str = "minioadmin"
+    MINIO_SECRET_KEY: str = "minioadmin"
+    MINIO_BUCKET: str = "tracks"
+    MINIO_SECURE: bool = False
+
     DEBUG: bool = False
 
     model_config = SettingsConfigDict(
@@ -55,7 +62,7 @@ class Settings(BaseSettings):
 
     @property
     def ALEMBIC_DATABASE_URL(self) -> str:
-        return f"postgresql+psycopg://{self.DB_USER}:{self.DB_PASSWORD.get_secret_value()}@{self.DB_HOST}:{self.DB_PORT}/test"
+        return f"postgresql+psycopg://{self.DB_USER}:{self.DB_PASSWORD.get_secret_value()}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
 
 class TestSettings(BaseSettings):
