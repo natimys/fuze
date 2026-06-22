@@ -90,7 +90,7 @@ def info(verbose: bool = typer.Option(False, "--verbose", "-v", help="Show inact
     else:
         content.append("Endpoints unavailable (backend is not running)", style="dim")
 
-    ctable = Table(title="Containers", show_header=True, header_style="bold", pad_edge=False, expand=True)
+    ctable = Table(title="Containers", show_header=True, header_style="bold", pad_edge=False)
     ctable.add_column("Service", style="cyan", no_wrap=True)
     ctable.add_column("State")
     if containers:
@@ -103,7 +103,7 @@ def info(verbose: bool = typer.Option(False, "--verbose", "-v", help="Show inact
     all_modules = _get_modules()
     show = all_modules if verbose else [(n, a) for n, a in all_modules if a]
     mtitle = "Modules" if verbose else "Active Modules"
-    mtable = Table(title=mtitle, show_header=True, header_style="bold", pad_edge=False, expand=True)
+    mtable = Table(title=mtitle, show_header=True, header_style="bold", pad_edge=False)
     mtable.add_column("Module", style="cyan", no_wrap=True)
     mtable.add_column("State")
     if show:
