@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import typer
@@ -94,6 +95,47 @@ def toggle(module_name: str = typer.Argument(..., help="Module name to toggle"))
     module_py.write_text(content, encoding="utf-8")
     status = "enabled" if new_active else "disabled"
     console.print(f"[green]Module '{module_name}' is now {status} ({'active=True' if new_active else 'active=False'})[/green]")
+
+
+@app.command()
+def rename(
+    current_name: str = typer.Argument(..., help="Current module name"),
+    new_name: str = typer.Argument(..., help="New module name"),
+):
+    old_path = _module_path(current_name)
+    new_path = _module_path(new_name)
+    if not old_path.exists():
+        console.print(f"[red]Module '{current_name}' not found[/red]")
+        raise typer.Exit(1)
+    if new_path.exists():
+        console.print(f"[red]Module '{new_name}' already exists[/red]")
+        raise typer.Exit(1)
+
+    old_path.rename(new_path)
+
+    module_py_path = new_path / "module.py"
+    if module_py_path.exists():
+        content = module_py_path.read_text(encoding="utf-8")
+        content = re.sub(
+            r'name\s*=\s*"' + re.escape(current_name) + r'"',
+            f'name="{new_name}"',
+            content,
+        )
+        content = re.sub(
+            r'router_prefix\s*=\s*"/' + re.escape(current_name) + r'"',
+            f'router_prefix="/{new_name}"',
+            content,
+        )
+        content = re.sub(
+            r'router_tags\s*=\s*\["' + re.escape(current_name) + r'"\]',
+            f'router_tags=["{new_name}"]',
+            content,
+        )
+        module_py_path.write_text(content, encoding="utf-8")
+
+    console.print(
+        f"[green]Module '{current_name}' renamed to '{new_name}' at {new_path}[/green]"
+    )
 
 
 @app.command()

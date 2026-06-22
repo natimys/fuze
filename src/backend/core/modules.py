@@ -2,11 +2,10 @@ import importlib
 import pkgutil
 from dataclasses import dataclass
 
-import modules
 from fastapi import APIRouter, FastAPI
 from loguru import logger
 
-from core.logger import timer_logger
+import modules
 
 
 @dataclass(slots=True, frozen=True)
@@ -43,7 +42,6 @@ def load_router(module_name: str) -> APIRouter | None:
         return None
 
 
-@timer_logger
 def register_modules(app: FastAPI):
     """
     Регистрация модулей из ./modules

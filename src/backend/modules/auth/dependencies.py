@@ -24,27 +24,7 @@ async def get_current_user(
     return user
 
 
-async def login_and_set_cookies(
-    response: Response,
-    data: UserLogin,
-    auth_service: AuthService = Depends(get_auth_service),
-) -> type[UserLogin]:
-    access_token, refresh_token = await auth_service.authenticate(data)
-    jwt_security.set_access_cookies(access_token, response)
-    jwt_security.set_refresh_cookies(refresh_token, response)
-    return UserLogin
 
 
-async def refresh_session_and_set_cookies(
-    response: Response,
-    payload = Depends(jwt_security.refresh_token_required),
-    auth_service: AuthService = Depends(get_auth_service),
-    user_service: UserService = Depends(get_user_service),
-):
-    user = await user_service.get_user_by_id(int(payload.sub))
-    access_token, refresh_token = auth_service.generate_tokens(user.id, user_role=user.role)
 
-    jwt_security.set_access_cookies(access_token, response)
-    jwt_security.set_refresh_cookies(refresh_token, response)
 
-    return {"message": "token refreshed"}

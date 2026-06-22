@@ -5,6 +5,7 @@ from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+BACKEND_DIR = BASE_DIR / "src" / "backend"
 
 
 class Settings(BaseSettings):
@@ -13,6 +14,11 @@ class Settings(BaseSettings):
     DB_USER: str = "postgres"
     DB_PASSWORD: SecretStr = "postgres"
     DB_NAME: str = "postgres"
+
+    YANDEX_ACCESS_TOKEN: SecretStr | None = None
+
+    SWAGGER_PATH: str = "/docs"
+    REDOC_PATH: str = "/redoc"
 
     REDIS_URL: str
     JWT_SECURITY_KEY: SecretStr
@@ -24,6 +30,13 @@ class Settings(BaseSettings):
 
     REFRESH_TOKEN_EXPIRES: int
     ACCESS_TOKEN_EXPIRES: int
+
+    MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_EXTERNAL_ENDPOINT: str = "localhost:9000"
+    MINIO_ACCESS_KEY: str = "minioadmin"
+    MINIO_SECRET_KEY: str = "minioadmin"
+    MINIO_BUCKET: str = "tracks"
+    MINIO_SECURE: bool = False
 
     DEBUG: bool = False
 
@@ -50,6 +63,22 @@ class Settings(BaseSettings):
     @property
     def ALEMBIC_DATABASE_URL(self) -> str:
         return f"postgresql+psycopg://{self.DB_USER}:{self.DB_PASSWORD.get_secret_value()}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+
+
+class TestSettings(BaseSettings):
+    TEST_DB_HOST: str = "localhost"
+    TEST_DB_PORT: int = 5432
+    TEST_DB_USER: str = "postgres"
+    TEST_DB_PASSWORD: SecretStr = "postgres"
+    TEST_DB_NAME: str = "postgres"
+
+    model_config = SettingsConfigDict(
+        env_file=BASE_DIR / ".env.test"
+    )
+
+    @property
+    def TEST_DATABASE_URL(self) -> str:
+        return f"postgresql+asyncpg://{self.TEST_DB_USER}:{self.TEST_DB_PASSWORD.get_secret_value()}@{self.TEST_DB_HOST}:{self.TEST_DB_PORT}/{self.TEST_DB_NAME}"
 
 
 @lru_cache
