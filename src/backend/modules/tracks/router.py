@@ -1,67 +1,49 @@
-import os
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from fastapi import APIRouter, Header, Depends
-from fastapi.exceptions import HTTPException
-from fastapi.responses import StreamingResponse
-
-from core.settings import BACKEND_DIR
+from core.enums import UserRole
+from .dependencies import get_tracks_service
 from .module import module
+from .schemas import (
+    TrackDownloadResponse,
+    TrackSearchResponse,
+    TrackStreamResponse,
+)
 from .service import TracksService
+from ..users.dependencies import require_role
 
-router = APIRouter(prefix=module.router_prefix, tags=module.router_tags)
+router = APIRouter(
+    prefix=module.router_prefix, tags=module.router_tags,
+    dependencies=[Depends(require_role(UserRole.USER))]
+)
 
 
-@router.get("/{audio_id}/stream")
-async def audio(
-        audio_id: str,
-        range_header: str | None = Header(default=None, alias="Range"),
-        tracks_service: TracksService = Depends(TracksService),
+@router.get("/search/", response_model=TrackSearchResponse)
+async def search_tracks(
+        q: str = Query(..., description="Search query"),
+        service: TracksService = Depends(get_tracks_service),
+):
+    results = await service.search(q)
+    return TrackSearchResponse(data=results, query=q)
+
+
+@router.post("/{track_id}/download/", response_model=TrackDownloadResponse)
+async def download_track(
+        track_id: int,
+        service: TracksService = Depends(get_tracks_service),
 ):
     try:
-        path = f"{BACKEND_DIR}/integrations/downloads/{audio_id}.opus"
-    except FileNotFoundError:
-        raise HTTPException(status_code=404)
-    size = os.path.getsize(path)
-
-    start = 0
-    end = size - 1
-    status_code = 200
-
-    if range_header:
-        status_code = 206
-        start_str, end_str = range_header.replace("bytes=", "").split("-")
-        start = int(start_str)
-        if end_str:
-            end = int(end_str)
-
-    headers = {
-        "Accept-Ranges": "bytes",
-        "Content-Length": str(end - start + 1),
-        "Content-Type": "audio/mpeg",
-    }
-
-    if range_header:
-        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
-
-    return StreamingResponse(
-        tracks_service.iter_file(
-            path=path,
-            start=start,
-            end=end,
-        ),
-        status_code=status_code,
-        media_type="audio/mpeg",
-        headers=headers,
-    )
+        track = await service.save_and_download(track_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return TrackDownloadResponse(status="ok", track_id=track.id)
 
 
-@router.post("/search/")
-async def search(query: str, tracks_service: TracksService = Depends(TracksService)):
-    result = await tracks_service.search(query)
-    return result.url
-
-
-@router.post("/download/")
-async def download(url: str, tracks_service: TracksService = Depends(TracksService)):
-    result = await tracks_service.download(url)
-    return result.name
+@router.get("/{track_id}/stream", response_model=TrackStreamResponse)
+async def stream_track(
+        track_id: int,
+        service: TracksService = Depends(get_tracks_service),
+):
+    url = await service.get_stream_url(track_id)
+    if not url:
+        raise HTTPException(status_code=404, detail="Track not found or not downloaded")
+    return TrackStreamResponse(url=url)
