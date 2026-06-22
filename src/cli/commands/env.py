@@ -51,7 +51,7 @@ def yandex():
         console.print(Panel(text, title="Confirmation", border_style="yellow"))
 
     client = ClientAsync()
-    token = client.device_auth(on_code=on_code)
+    token = asyncio.run(client.device_auth(on_code=on_code))
 
     console.print()
     console.print(
