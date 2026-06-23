@@ -9,6 +9,8 @@ import type {
 
 const API_BASE = '/api'
 
+let accessToken: string | null = null
+
 let isRefreshing = false
 let refreshPromise: Promise<boolean> | null = null
 
@@ -24,6 +26,10 @@ async function tryRefresh(): Promise<boolean> {
         method: 'POST',
         credentials: 'include',
       })
+      if (res.ok) {
+        const data = await res.json()
+        accessToken = data.access_token
+      }
       return res.ok
     } catch {
       return false
@@ -42,17 +48,22 @@ async function request<T>(
   retryCount = 0,
 ): Promise<T> {
   const url = `${API_BASE}${path}`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  }
+  if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`
+  }
   const res = await fetch(url, {
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
     ...options,
   })
 
   if (res.status === 401) {
     if (retryCount >= 2) {
+      accessToken = null
       if (typeof window !== 'undefined') {
         window.location.href = '/auth'
       }
@@ -64,6 +75,7 @@ async function request<T>(
       return request<T>(path, options, retryCount + 1)
     }
 
+    accessToken = null
     if (typeof window !== 'undefined') {
       window.location.href = '/auth'
     }
@@ -91,10 +103,15 @@ export const api = {
       request<{ access_token: string; refresh_token: string }>('/auth/login/', {
         method: 'POST',
         body: JSON.stringify(data),
+      }).then((res) => {
+        accessToken = res.access_token
+        return res
       }),
 
     logout: () =>
-      request<void>('/auth/logout/', { method: 'POST' }),
+      request<void>('/auth/logout/', { method: 'POST' }).then(() => {
+        accessToken = null
+      }),
 
     me: () => request<UserPublic>('/auth/me/'),
 
