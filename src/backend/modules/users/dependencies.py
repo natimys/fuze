@@ -14,7 +14,7 @@ def require_role(*roles: UserRole):
     async def dependency(
         payload: TokenPayload = Depends(jwt_security.access_token_required)
     ):
-        user_role = payload.extra_dict.get("role")
+        user_role = getattr(payload, "role", None)
         
         if user_role not in allowed_roles:
             raise HTTPException(status_code=403, detail="Forbidden")
