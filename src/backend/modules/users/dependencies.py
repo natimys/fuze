@@ -6,7 +6,7 @@ from core.security import jwt_security
 from database.dependencies import get_db
 from modules.users.repository import UserRepository
 from modules.users.service import UserService
-
+from authx import TokenPayload
 
 def require_role(*roles: UserRole):
     allowed_roles = {r.value for r in roles}
