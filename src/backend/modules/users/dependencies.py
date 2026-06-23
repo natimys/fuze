@@ -9,14 +9,17 @@ from modules.users.service import UserService
 
 
 def require_role(*roles: UserRole):
+    allowed_roles = {r.value for r in roles}
+
     async def dependency(
-            payload=Depends(jwt_security.access_token_required),
-            user_service: UserService = Depends(get_user_service),
+        payload: TokenPayload = Depends(jwt_security.access_token_required)
     ):
-        user = await user_service.get_user_by_id(int(payload.sub))
-        if user.role not in roles:
-            raise HTTPException(status_code=403)
-        return user
+        user_role = payload.extra_dict.get("role")
+        
+        if user_role not in allowed_roles:
+            raise HTTPException(status_code=403, detail="Forbidden")
+            
+        return payload
 
     return dependency
 

@@ -13,10 +13,8 @@ class AuthService:
 
     def generate_tokens(self, user_id: int, user_role: UserRole | None = None) -> tuple[str, str]:
         uid_str = str(user_id)
-        kwargs = {"uid": uid_str}
-        if user_role:
-            kwargs["role"] = user_role.value
-        access_token = jwt_security.create_access_token(**kwargs)
+        token_data = {"role": user_role.value} if user_role else {}
+        access_token = jwt_security.create_access_token(uid, data=token_data)
         refresh_token = jwt_security.create_refresh_token(uid=uid_str)
         return access_token, refresh_token
 
