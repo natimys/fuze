@@ -13,7 +13,7 @@ from ..users.service import UserService
 router = APIRouter(prefix=module.router_prefix, tags=module.router_tags)
 
 
-@router.post("/register/", response_model=UserPublic)
+@router.post("/register", response_model=UserPublic)
 async def register(
         data: UserRegister, auth_service: AuthService = Depends(get_auth_service)
 ):
@@ -21,7 +21,7 @@ async def register(
     return user
 
 
-@router.get("/me/", response_model=UserPublic)
+@router.get("/me", response_model=UserPublic)
 async def me(
         payload=Depends(jwt_security.access_token_required),
         user_service: UserService = Depends(get_user_service),
@@ -29,7 +29,7 @@ async def me(
     return await user_service.get_user_by_id(int(payload.sub))
 
 
-@router.post("/refresh/")
+@router.post("/refresh")
 async def refresh(
         response: Response,
         payload=Depends(jwt_security.refresh_token_required),
@@ -47,7 +47,7 @@ async def refresh(
     }
 
 
-@router.post("/login/")
+@router.post("/login")
 async def login(data: UserLogin, response: Response, auth_service: AuthService = Depends(get_auth_service)):
     access_token, refresh_token = await auth_service.authenticate(data)
 

@@ -17,7 +17,7 @@ router = APIRouter(
 )
 
 
-@router.get("/search/", response_model=TrackSearchResponse)
+@router.get("/search", response_model=TrackSearchResponse)
 async def search_tracks(
         q: str = Query(..., description="Search query"),
         service: TracksService = Depends(get_tracks_service),
@@ -26,7 +26,7 @@ async def search_tracks(
     return TrackSearchResponse(data=results, query=q)
 
 
-@router.post("/{track_id}/download/", response_model=TrackDownloadResponse)
+@router.post("/{track_id}/download", response_model=TrackDownloadResponse)
 async def download_track(
         track_id: int,
         service: TracksService = Depends(get_tracks_service),
