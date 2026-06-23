@@ -4,3 +4,4 @@ __pycache__
 /.mimocode/
 Fuze.egg-info
 bin
+docker-compose.yml

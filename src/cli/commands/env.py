@@ -15,6 +15,7 @@ console = Console()
 @app.command()
 def init(
     env: bool = typer.Option(True, help="Create .env from .env.example if missing"),
+    docker_compose: bool = typer.Option(True, help="Create docker-compose.yml from docker-compose.yml.example if missing")
 ):
     if env:
         env_file = ROOT / ".env"
@@ -24,7 +25,14 @@ def init(
             console.print("[green].env created from .env.example[/green]")
         else:
             console.print("[yellow].env already exists or .env.example missing[/yellow]")
-
+    if docker_compose:
+        docker_compose_file = ROOT / "docker-compose.yml"
+        docker_compose_example = ROOT / "docker-compose.yml.example"
+        if not docker_compose_file.exists() and docker_compose_example.exists():
+            docker_compose_file.write_text(docker_compose_example.read_text(encoding="utf-8"), encoding="utf-8")
+            console.print("[green]docker-compose.yml created from docker-compose.yml.example[/green]")
+        else:
+            console.print("[yellow]docker-compose.yml already exists or docker-compose.yml.example missing[/yellow]")
 
 @setup_app.command()
 def yandex():
