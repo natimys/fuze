@@ -7,7 +7,7 @@ import type {
   TrackDownloadResponse,
 } from './types'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_BASE = '/api'
 
 let isRefreshing = false
 let refreshPromise: Promise<boolean> | null = null

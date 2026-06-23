@@ -45,10 +45,8 @@ services:
   backend:
     restart: always
     build:
-      context: .
-      dockerfile: src/backend/Dockerfile
-    volumes:
-      - ./src/backend:/app/src/backend
+      context: src/backend
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     env_file:
@@ -69,7 +67,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://backend:8000
+      API_PUBLIC_URL: ${API_PUBLIC_URL}
     depends_on:
       - backend
 

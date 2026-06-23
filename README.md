@@ -76,30 +76,47 @@ project env init
 
 Edit `.env` and set the required values:
 
-```env
+```env.example
+# Your API public URL
+API_PUBLIC_URL="example.com"
+
 # Database
 DB_HOST=localhost
 DB_PORT=5432
 DB_USER=postgres
 DB_PASSWORD=postgres
 DB_NAME=database
+TEST_DB_HOST=localhost
 
-# Redis
 REDIS_URL=redis://localhost:6379/0
 
-# JWT (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
-JWT_SECURITY_KEY="your-secret-key"
+# Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+JWT_SECURITY_KEY="CHANGE-THIS-PLEASE"
 
-# Yandex Music (get token via CLI: project setup yandex)
+# Yandex Music (get token via CLI: project env setup yandex)
 YANDEX_ACCESS_TOKEN=
 
-# MinIO (S3 storage)
+# CORS settings
+# change example.com to your public frontend domain
+CORS_ORIGINS=["https://example.com","http://localhost:3000"]
+CORS_ALLOW_CREDENTIALS=true
+CORS_ALLOW_METHODS=["*"]
+CORS_ALLOW_HEADERS=["*"]
+
+# Tokens configuration
+ACCESS_TOKEN_EXPIRES=15
+REFRESH_TOKEN_EXPIRES=30
+
+# MinIO S3 configuration
 MINIO_ENDPOINT=localhost:9000
 MINIO_EXTERNAL_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 MINIO_BUCKET=tracks
 MINIO_SECURE=false
+
+# DEBUG
+DEBUG=true
 ```
 
 ### Running
@@ -123,7 +140,7 @@ cd src/backend
 alembic upgrade head
 
 # Start the backend
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 8000
 
 # In another terminal, start the frontend
 cd src/frontend
@@ -162,7 +179,7 @@ project db rollback
 project module toggle tracks
 
 # Manage users
-project users create
+project users create # use to create admin user
 
 # Initialize .env from .env.example
 project env init
