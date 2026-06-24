@@ -16,6 +16,7 @@ def _make_jwt_security() -> AuthX:
         JWT_TOKEN_LOCATION=["headers", "cookies"],
         JWT_REFRESH_COOKIE_NAME="refresh_token",
         JWT_ACCESS_COOKIE_NAME="access_token",
+        JWT_COOKIE_CSRF_PROTECT=False,
         JWT_ACCESS_TOKEN_EXPIRES=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRES),
         JWT_REFRESH_TOKEN_EXPIRES=timedelta(days=settings.REFRESH_TOKEN_EXPIRES),
     )
