@@ -9,7 +9,7 @@ from .schemas import (
     TrackStreamResponse,
 )
 from .service import TracksService
-from ..users.dependencies import require_role
+from core.dependencies import require_role
 
 router = APIRouter(
     prefix=module.router_prefix, tags=module.router_tags,
