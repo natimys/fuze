@@ -62,8 +62,6 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
-    environment:
-      API_PUBLIC_URL: ${API_PUBLIC_URL}
     depends_on:
       - backend
 
