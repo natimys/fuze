@@ -16,19 +16,22 @@
 ## About
 
 Fuze is a self-hosted music streaming service. Search via Yandex Music, pull audio
-from YouTube, store it in MinIO — one interface for all of it.
+from YouTube, store it in MinIO - one interface for all of it.
 
 **Key features:**
 
-- **Unified search** — find tracks across multiple platforms from one search bar
-- **Smart caching** — Redis-backed caching for search results and YouTube URLs
-- **S3 storage** — MinIO integration for self-hosted audio storage
-- **Modular backend** — auth, users, tracks: each is an independent module you can
+- **Unified search** - find tracks across multiple platforms from one search bar
+- **Smart caching** - Redis-backed caching for search results and YouTube URLs
+- **S3 storage** - MinIO integration for self-hosted audio storage
+- **Modular backend** - auth, users, tracks: each is an independent module you can
   toggle on or off
-- **Frontend** — Next.js 16 + React 19 + Tailwind CSS with a full player UI
-- **CLI tooling** — manage Docker, modules, database migrations, and integrations
+- **Frontend** - Next.js 16 + React 19 + Tailwind CSS with a full player UI
+*for developers*
+- **CLI tooling** - manage Docker, modules, database migrations, and integrations
   from the terminal
-  
+
+→ **[fuze.cynaqu.ru](https://fuze.cynaqu.ru)** - live demo
+
 ---
 
 ## Tech Stack
@@ -80,18 +83,14 @@ project env init
 Edit `.env` and set the required values:
 
 ```env.example
-# Your API public URL
-API_PUBLIC_URL="example.com"
-
 # Database
-DB_HOST=localhost
+DB_HOST=db
 DB_PORT=5432
 DB_USER=postgres
 DB_PASSWORD=postgres
 DB_NAME=database
-TEST_DB_HOST=localhost
 
-REDIS_URL=redis://localhost:6379/0
+REDIS_URL=redis://redis:6379/0
 
 # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 JWT_SECURITY_KEY="CHANGE-THIS-PLEASE"
@@ -112,7 +111,7 @@ REFRESH_TOKEN_EXPIRES=30
 
 # MinIO S3 configuration
 MINIO_ENDPOINT=localhost:9000
-MINIO_EXTERNAL_ENDPOINT=localhost:9000
+MINIO_EXTERNAL_ENDPOINT=minio:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 MINIO_BUCKET=tracks
