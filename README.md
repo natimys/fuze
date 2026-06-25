@@ -15,17 +15,20 @@
 
 ## About
 
-Fuze is a self-hosted music streaming service that brings together multiple music sources under a single interface. Search tracks across Yandex Music, download audio via YouTube, store everything in MinIO (S3-compatible storage), and stream from anywhere — all with a clean, modern UI.
+Fuze is a self-hosted music streaming service. Search via Yandex Music, pull audio
+from YouTube, store it in MinIO — one interface for all of it.
 
 **Key features:**
 
 - **Unified search** — find tracks across multiple platforms from one search bar
 - **Smart caching** — Redis-backed caching for search results and YouTube URLs
-- **S3 storage** — MinIO integration for reliable, self-hosted audio storage
-- **Modular backend** — plug-and-play module system for auth, users, tracks, and more
-- **Modern frontend** — Next.js 16 + React 19 + Tailwind CSS with a full player UI
-- **CLI tooling** — manage Docker, modules, database migrations, and integrations from the terminal
-
+- **S3 storage** — MinIO integration for self-hosted audio storage
+- **Modular backend** — auth, users, tracks: each is an independent module you can
+  toggle on or off
+- **Frontend** — Next.js 16 + React 19 + Tailwind CSS with a full player UI
+- **CLI tooling** — manage Docker, modules, database migrations, and integrations
+  from the terminal
+  
 ---
 
 ## Tech Stack
