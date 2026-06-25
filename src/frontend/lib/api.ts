@@ -22,7 +22,7 @@ async function tryRefresh(): Promise<boolean> {
   isRefreshing = true
   refreshPromise = (async () => {
     try {
-      const res = await fetch(`${API_BASE}/auth/refresh/`, {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
       })
@@ -94,13 +94,13 @@ async function request<T>(
 export const api = {
   auth: {
     register: (data: UserRegister) =>
-      request<UserPublic>('/auth/register/', {
+      request<UserPublic>('/auth/register', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
 
     login: (data: UserLogin) =>
-      request<{ access_token: string; refresh_token: string }>('/auth/login/', {
+      request<{ access_token: string; refresh_token: string }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify(data),
       }).then((res) => {
@@ -109,21 +109,21 @@ export const api = {
       }),
 
     logout: () =>
-      request<void>('/auth/logout/', { method: 'POST' }).then(() => {
+      request<void>('/auth/logout', { method: 'POST' }).then(() => {
         accessToken = null
       }),
 
-    me: () => request<UserPublic>('/auth/me/'),
+    me: () => request<UserPublic>('/auth/me'),
 
     refresh: () => tryRefresh(),
   },
 
   tracks: {
     search: (q: string) =>
-      request<TrackSearchResponse>(`/tracks/search/?q=${encodeURIComponent(q)}`),
+      request<TrackSearchResponse>(`/tracks/search?q=${encodeURIComponent(q)}`),
 
     download: (trackId: number) =>
-      request<TrackDownloadResponse>(`/tracks/${trackId}/download/`, {
+      request<TrackDownloadResponse>(`/tracks/${trackId}/download`, {
         method: 'POST',
       }),
 
