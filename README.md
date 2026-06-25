@@ -54,8 +54,10 @@ from YouTube, store it in MinIO - one interface for all of it.
 ### Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) & Docker Compose
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) (Python package manager)
-- [Node.js 18+](https://nodejs.org/) (for frontend dev)
+
+#### Development
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (backend)
+- [Node.js 18+](https://nodejs.org/) (frontend)
 - [Python 3.12+](https://www.python.org/downloads/)
 
 ### Installation
