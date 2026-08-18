@@ -140,6 +140,24 @@ export function SearchModal({ isOpen, onClose }: Props) {
 
   const duration = (ms: number | null) => ms ? `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}` : '--:--'
 
+  const primaryResults = results.filter((track) => track.source !== 'spotify')
+  const spotifyResults = results.filter((track) => track.source === 'spotify')
+  const renderRows = (items: TrackSearchResult[]) => items.map((track) => {
+    const state = busy[track.key] ?? track.availability
+    return <div key={track.key} className="group flex items-center gap-3 p-2 rounded-lg hover:bg-hover">
+      <button type="button" onClick={() => void act(track, true)} disabled={Boolean(busy[track.key])} className="flex flex-1 min-w-0 items-center gap-3 text-left disabled:opacity-60" aria-label={`${track.capability === 'external' ? 'Open' : 'Play'} ${track.title}`}>
+        <div className="w-10 h-10 rounded bg-surface-raised overflow-hidden flex items-center justify-center">{track.cover_url ? <img src={track.cover_url} alt="" className="w-full h-full object-cover" /> : <MusicNote size={17} className="text-text-muted" aria-hidden="true" />}</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm text-text-primary truncate" title={track.title}>{track.title}</div>
+          <div className="text-xs text-text-muted truncate" title={track.artist}>{track.artist}{track.source !== 'spotify' && <> · {track.source}</>}</div>
+        </div>
+        <span className="text-xs text-text-muted font-mono">{duration(track.duration_ms)}</span>
+        {state === 'queued' || state === 'downloading' ? <span className="flex items-center gap-1 text-xs text-text-muted"><Spinner className="animate-spin" />{state}</span> : state === 'ready' ? <Check className="text-green-400" /> : track.capability === 'external' ? <ArrowSquareOut /> : <Play />}
+      </button>
+      {track.capability === 'acquire' && <button type="button" disabled={Boolean(busy[track.key])} onClick={() => void act(track, false)} aria-label={`Add ${track.title} to queue`} className="p-2 rounded-full text-text-secondary hover:bg-hover-strong disabled:opacity-40"><Plus size={15} /></button>}
+    </div>
+  })
+
   return <AnimatePresence>{isOpen && <>
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60" onClick={close} aria-hidden="true" />
     <motion.div ref={panelRef} role="dialog" aria-modal="true" aria-label="Search music" initial={{ opacity: 0, scale: .98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="fixed top-[max(1rem,8%)] left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-[560px]">
@@ -153,20 +171,18 @@ export function SearchModal({ isOpen, onClose }: Props) {
         <div className="max-h-[min(65dvh,440px)] overflow-y-auto" aria-live="polite">
           {providerMessages.length > 0 && <div className="px-4 py-2 text-xs text-text-muted">{providerMessages.join(', ')}{spotifyUrl && <>. <a href={spotifyUrl} target="_blank" rel="noreferrer" className="underline">Spotify search</a></>}</div>}
           {error && <div role="alert" className="mx-4 mt-3 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</div>}
-          {loading ? <div className="flex justify-center py-12"><Spinner className="animate-spin" size={24} /></div> : results.length ? <div className="p-2">
-            {results.map((track) => {
-              const state = busy[track.key] ?? track.availability
-              return <div key={track.key} className="group flex items-center gap-3 p-2 rounded-lg hover:bg-hover">
-                <button type="button" onClick={() => void act(track, true)} disabled={Boolean(busy[track.key])} className="flex flex-1 min-w-0 items-center gap-3 text-left disabled:opacity-60" aria-label={`${track.capability === 'external' ? 'Open' : 'Play'} ${track.title}`}>
-                  <div className="w-10 h-10 rounded bg-surface-raised overflow-hidden flex items-center justify-center">{track.cover_url ? <img src={track.cover_url} alt="" className="w-full h-full object-cover" /> : <MusicNote size={17} className="text-text-muted" aria-hidden="true" />}</div>
-                  <div className="flex-1 min-w-0"><div className="text-sm text-text-primary truncate">{track.title}</div><div className="text-xs text-text-muted truncate">{track.artist} · {track.source}</div></div>
-                  <span className="text-xs text-text-muted font-mono">{duration(track.duration_ms)}</span>
-                  {state === 'queued' || state === 'downloading' ? <span className="flex items-center gap-1 text-xs text-text-muted"><Spinner className="animate-spin" />{state}</span> : state === 'ready' ? <Check className="text-green-400" /> : track.capability === 'external' ? <ArrowSquareOut /> : <Play />}
-                </button>
-                {track.capability === 'acquire' && <button type="button" disabled={Boolean(busy[track.key])} onClick={() => void act(track, false)} aria-label={`Add ${track.title} to queue`} className="p-2 rounded-full text-text-secondary hover:bg-hover-strong disabled:opacity-40"><Plus size={15} /></button>}
+          {loading ? <div className="flex justify-center py-12"><Spinner className="animate-spin" size={24} /></div> : results.length ? <>
+            {primaryResults.length > 0 && <div className="p-2">{renderRows(primaryResults)}</div>}
+            {spotifyResults.length > 0 && <section aria-labelledby="spotify-results-heading" className={primaryResults.length > 0 ? 'border-t border-border' : undefined}>
+              <div className="flex min-h-10 items-center justify-between gap-3 px-4 py-2">
+                <h2 id="spotify-results-heading" className="sr-only">Spotify results</h2>
+                <img src="/spotify-full-logo-white.svg" alt="Spotify" width="74" height="20" className="h-auto w-[74px] shrink-0" />
+                <span className="text-xs text-text-muted">Opens in Spotify</span>
               </div>
-            })}
-          </div> : query.length >= 2 ? <p className="py-12 text-center text-sm text-text-muted">No results found</p> : <p className="py-12 text-center text-sm text-text-muted">Type at least two characters</p>}
+              <div className="p-2 pt-0">{renderRows(spotifyResults)}</div>
+              {spotifyUrl && <div className="px-4 pb-3 text-right"><a href={spotifyUrl} target="_blank" rel="noreferrer" className="text-xs font-medium text-text-secondary underline underline-offset-4">OPEN SPOTIFY</a></div>}
+            </section>}
+          </> : query.length >= 2 ? <p className="py-12 text-center text-sm text-text-muted">No results found</p> : <p className="py-12 text-center text-sm text-text-muted">Type at least two characters</p>}
         </div>
       </div>
     </motion.div>
