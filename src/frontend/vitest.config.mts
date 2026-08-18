@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   resolve: { alias: { '@': import.meta.dirname } },
   test: {
+    include: ['./test/**/*.test.{ts,tsx}'],
     environment: 'jsdom',
     setupFiles: ['./test/setup.ts'],
     restoreMocks: true,
