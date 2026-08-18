@@ -147,6 +147,26 @@ docker compose up -d
 
 This starts PostgreSQL, Redis, MinIO, the API, Celery worker/beat, and frontend.
 
+**Production-like HTTPS media check:**
+
+```bash
+cp .env.media.example .env.media  # use copy on Windows, then replace the secrets
+docker compose -p fuze-media -f docker-compose.yml -f docker-compose.media.yml \
+  --env-file .env --env-file .env.media up -d --build
+docker compose -p fuze-media -f docker-compose.yml -f docker-compose.media.yml \
+  --env-file .env --env-file .env.media --profile media-test \
+  run --rm media-smoke
+```
+
+The overlay serves the UI at `https://fuze.localhost:8443` and presigned media
+at `https://storage.localhost:8443` through Caddy's local CA. It provisions the
+bucket with MinIO root credentials, while the API and worker receive a separate
+bucket-scoped account. The smoke test uploads a disposable object, validates an
+HTTPS `Range` response against that CA (`206`, `Accept-Ranges`, `Content-Range`, exact bytes),
+deletes it, and confirms that the media account cannot create another bucket.
+The dedicated `fuze-media` Compose project name also keeps this gate's volumes
+separate from an existing development stack.
+
 **Local development:**
 
 ```bash
@@ -174,6 +194,11 @@ matches the configured production database.
 copy .env.test.example .env.test  # use cp on Linux/macOS
 docker compose --profile test up -d db-test redis minio
 uv run pytest
+
+# Deterministic browser flow (mock API, real Next.js UI)
+cd src/frontend
+npx playwright install chromium  # first run only
+npm run test:e2e
 ```
 
 ### Access
