@@ -1,0 +1,129 @@
+services:
+  minio:
+    ports: !reset []
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env.media}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env.media}
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env.media}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env.media}
+      MINIO_APP_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set MINIO_APP_ACCESS_KEY in .env.media}
+      MINIO_APP_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set MINIO_APP_SECRET_KEY in .env.media}
+      MINIO_BUCKET: tracks
+    volumes:
+      - ./deploy/media/minio-policy.json:/config/minio-policy.json:ro
+    entrypoint: ["/bin/sh", "-eu", "-c"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
+        mc mb --ignore-existing "local/$${MINIO_BUCKET}"
+        mc admin policy create local fuze-media /config/minio-policy.json
+        mc admin user add local "$${MINIO_APP_ACCESS_KEY}" "$${MINIO_APP_SECRET_KEY}"
+        mc admin policy attach local fuze-media --user "$${MINIO_APP_ACCESS_KEY}"
+
+  backend:
+    ports: !reset []
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set MINIO_APP_ACCESS_KEY in .env.media}
+      MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set MINIO_APP_SECRET_KEY in .env.media}
+      MINIO_EXTERNAL_ENDPOINT: https://storage.localhost:8443
+      MINIO_EXTERNAL_SECURE: "true"
+      MINIO_BUCKET: tracks
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+  worker:
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set MINIO_APP_ACCESS_KEY in .env.media}
+      MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set MINIO_APP_SECRET_KEY in .env.media}
+      MINIO_EXTERNAL_ENDPOINT: https://storage.localhost:8443
+      MINIO_EXTERNAL_SECURE: "true"
+      MINIO_BUCKET: tracks
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+  beat:
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set MINIO_APP_ACCESS_KEY in .env.media}
+      MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set MINIO_APP_SECRET_KEY in .env.media}
+      MINIO_EXTERNAL_ENDPOINT: https://storage.localhost:8443
+      MINIO_EXTERNAL_SECURE: "true"
+      MINIO_BUCKET: tracks
+
+  frontend:
+    ports: !reset []
+
+  proxy:
+    image: caddy:2.10.2-alpine
+    restart: always
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./deploy/media/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      default:
+        aliases:
+          - storage.localhost
+          - fuze.localhost
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "--spider", "https://storage.localhost:8443/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  media-ca:
+    profiles: ["media-test"]
+    image: caddy:2.10.2-alpine
+    restart: "no"
+    entrypoint: ["/bin/sh", "-eu", "-c"]
+    command:
+      - |
+        cp /caddy-data/caddy/pki/authorities/local/root.crt /ca/root.crt
+        chmod 0444 /ca/root.crt
+    volumes:
+      - caddy_data:/caddy-data:ro
+      - media_ca:/ca
+    depends_on:
+      proxy:
+        condition: service_healthy
+
+  media-smoke:
+    profiles: ["media-test"]
+    build:
+      context: .
+      dockerfile: src/backend/Dockerfile
+    command: ["python", "/verify/verify_media_range.py"]
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_EXTERNAL_ENDPOINT: https://storage.localhost:8443
+      MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set MINIO_APP_ACCESS_KEY in .env.media}
+      MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set MINIO_APP_SECRET_KEY in .env.media}
+      MINIO_BUCKET: tracks
+      TLS_CA_FILE: /ca/root.crt
+    volumes:
+      - ./deploy/media/verify_media_range.py:/verify/verify_media_range.py:ro
+      - media_ca:/ca:ro
+    depends_on:
+      media-ca:
+        condition: service_completed_successfully
+
+volumes:
+  caddy_data:
+  caddy_config:
+  media_ca:
