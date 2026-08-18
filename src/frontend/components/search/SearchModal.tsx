@@ -13,6 +13,7 @@ import {
   X,
   ArrowDown,
   Check,
+  ArrowSquareOut,
 } from '@phosphor-icons/react'
 
 interface SearchModalProps {
@@ -24,7 +25,9 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<TrackSearchResult[]>([])
   const [loading, setLoading] = useState(false)
-  const [downloadingId, setDownloadingId] = useState<number | null>(null)
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null)
+  const [spotifySearchUrl, setSpotifySearchUrl] = useState<string | null>(null)
+  const [providerMessages, setProviderMessages] = useState<string[]>([])
   const addToQueue = usePlayerStore((s) => s.addToQueue)
   const setCurrentTrack = usePlayerStore((s) => s.setCurrentTrack)
   const setIsPlaying = usePlayerStore((s) => s.setIsPlaying)
@@ -34,7 +37,8 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
     if (!isOpen) {
       setQuery('')
       setResults([])
-      setDownloadingId(null)
+      setDownloadingKey(null)
+      setProviderMessages([])
     }
   }, [isOpen])
 
@@ -45,7 +49,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
   }, [isOpen])
 
   const search = useCallback(async (q: string) => {
-    if (!q.trim()) {
+    if (q.trim().length < 2) {
       setResults([])
       return
     }
@@ -54,6 +58,10 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
     try {
       const res = await api.tracks.search(q)
       setResults(res.data)
+      setSpotifySearchUrl(res.spotify_search_url)
+      setProviderMessages(Object.entries(res.providers)
+        .filter(([, state]) => state.status !== 'ok')
+        .map(([name, state]) => `${name}: ${state.status.replace('_', ' ')}`))
     } catch {
       setResults([])
     } finally {
@@ -69,25 +77,44 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
   }, [query, search])
 
   async function handlePlay(track: TrackSearchResult) {
-    if (downloadingId === track.id) return
+    if (track.action === 'external') {
+      if (track.external_url) window.open(track.external_url, '_blank', 'noopener,noreferrer')
+      return
+    }
+    if (downloadingKey === track.key) return
 
-    setDownloadingId(track.id)
+    setDownloadingKey(track.key)
     try {
-      if (!track.already_downloaded) {
-        await api.tracks.download(track.id)
+      let playable = track
+      if (!track.already_downloaded || track.track_id === null) {
+        const acquired = await api.tracks.acquire(track.source, track.source_id)
+        playable = { ...track, track_id: acquired.track_id, already_downloaded: true }
+        setResults((items) => items.map((item) => item.key === track.key ? playable : item))
       }
-      addToQueue(track)
-      setCurrentTrack(track)
+      addToQueue(playable)
+      setCurrentTrack(playable)
       setIsPlaying(true)
     } catch {
       // Handle error
     } finally {
-      setDownloadingId(null)
+      setDownloadingKey(null)
     }
   }
 
-  function handleAddToQueue(track: TrackSearchResult) {
-    addToQueue(track)
+  async function handleAddToQueue(track: TrackSearchResult) {
+    if (track.action !== 'playable' || downloadingKey === track.key) return
+    let playable = track
+    if (track.track_id === null || !track.already_downloaded) {
+      setDownloadingKey(track.key)
+      try {
+        const acquired = await api.tracks.acquire(track.source, track.source_id)
+        playable = { ...track, track_id: acquired.track_id, already_downloaded: true }
+        setResults((items) => items.map((item) => item.key === track.key ? playable : item))
+      } finally {
+        setDownloadingKey(null)
+      }
+    }
+    addToQueue(playable)
   }
 
   function formatDuration(ms: number | null): string {
@@ -99,7 +126,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
   }
 
   function getTrackState(track: TrackSearchResult) {
-    if (downloadingId === track.id) return 'downloading'
+    if (downloadingKey === track.key) return 'downloading'
     if (track.already_downloaded) return 'ready'
     return 'remote'
   }
@@ -157,11 +184,19 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
                   </div>
                 ) : results.length > 0 ? (
                   <div className="py-2 pr-2">
+                    {providerMessages.length > 0 && (
+                      <div className="px-4 py-2 text-xs text-text-muted">
+                        {providerMessages.join(' · ')}
+                        {spotifySearchUrl && (
+                          <> · <a href={spotifySearchUrl} target="_blank" rel="noreferrer" className="underline">Search in Spotify</a></>
+                        )}
+                      </div>
+                    )}
                     {results.map((track) => {
                       const state = getTrackState(track)
                       return (
                         <button
-                          key={track.id}
+                          key={track.key}
                           onClick={() => handlePlay(track)}
                           disabled={state === 'downloading'}
                           className="w-full flex items-center gap-3 pl-4 pr-3 py-2.5 hover:bg-hover rounded-lg transition-colors text-left group disabled:opacity-60"
@@ -187,14 +222,18 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
                               {track.title}
                             </div>
                             <div className="text-xs text-text-muted truncate">
-                              {track.artist}
+                              {track.artist} · {track.source === 'youtube' ? 'YouTube' : track.source === 'spotify' ? 'Spotify' : 'Yandex Music'}
                             </div>
                           </div>
                           <span className="w-12 text-right text-xs text-text-muted font-mono flex-shrink-0 tabular-nums">
                             {formatDuration(track.duration_ms)}
                           </span>
                           <div className="flex items-center gap-1.5 flex-shrink-0">
-                            {state === 'downloading' ? (
+                            {track.action === 'external' ? (
+                              <span className="flex items-center gap-1 text-xs text-text-secondary">
+                                Open in Spotify <ArrowSquareOut size={13} />
+                              </span>
+                            ) : state === 'downloading' ? (
                               <span className="p-1.5 rounded-full bg-surface-raised text-text-secondary">
                                 <ArrowDown size={12} className="animate-bounce" />
                               </span>

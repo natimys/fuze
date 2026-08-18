@@ -23,7 +23,10 @@ export interface UserLogin {
 }
 
 export interface TrackSearchResult {
-  id: number
+  key: string
+  track_id: number | null
+  source: 'yandex' | 'youtube' | 'spotify'
+  action: 'playable' | 'external'
   title: string
   artist: string
   album: string | null
@@ -31,12 +34,15 @@ export interface TrackSearchResult {
   duration_ms: number | null
   cover_url: string | null
   source_id: string
+  external_url: string | null
   already_downloaded: boolean
 }
 
 export interface TrackSearchResponse {
   data: TrackSearchResult[]
   query: string
+  providers: Record<string, { status: 'ok' | 'unavailable' | 'rate_limited' | 'quota_exceeded'; cached: boolean }>
+  spotify_search_url: string
 }
 
 export interface TrackRead {

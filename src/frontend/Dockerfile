@@ -6,6 +6,8 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
+ARG API_PROXY_TARGET=http://backend:8000
+ENV API_PROXY_TARGET=${API_PROXY_TARGET}
 RUN npm run build
 
 

@@ -20,22 +20,22 @@ export function Queue() {
   const setCurrentTrack = usePlayerStore((s) => s.setCurrentTrack)
   const setIsPlaying = usePlayerStore((s) => s.setIsPlaying)
   const removeFromQueue = usePlayerStore((s) => s.removeFromQueue)
-  const [downloadingId, setDownloadingId] = useState<number | null>(null)
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null)
 
   async function handlePlayTrack(track: typeof queue[0]) {
-    if (downloadingId === track.id) return
+    if (downloadingKey === track.key) return
 
-    setDownloadingId(track.id)
+    setDownloadingKey(track.key)
     try {
-      if (!track.already_downloaded) {
-        await api.tracks.download(track.id)
+      if (!track.already_downloaded && track.track_id !== null) {
+        await api.tracks.download(track.track_id)
       }
       setCurrentTrack(track)
       setIsPlaying(true)
     } catch {
       // Handle error
     } finally {
-      setDownloadingId(null)
+      setDownloadingKey(null)
     }
   }
 
@@ -54,11 +54,11 @@ export function Queue() {
         <div className="flex flex-col gap-0.5 overflow-y-auto max-h-[400px]">
           <AnimatePresence mode="popLayout">
             {queue.map((track, i) => {
-              const isActive = track.id === currentTrack?.id
-              const isDownloading = downloadingId === track.id
+              const isActive = track.key === currentTrack?.key
+              const isDownloading = downloadingKey === track.key
               return (
                 <motion.div
-                  key={track.id}
+                  key={track.key}
                   layout
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
@@ -94,7 +94,7 @@ export function Queue() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      removeFromQueue(track.id)
+                      removeFromQueue(track.key)
                     }}
                     className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-hover transition-all flex-shrink-0"
                   >

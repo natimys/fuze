@@ -127,6 +127,12 @@ export const api = {
         method: 'POST',
       }),
 
+    acquire: (source: 'yandex' | 'youtube' | 'spotify', sourceId: string) =>
+      request<TrackDownloadResponse>('/tracks/acquire', {
+        method: 'POST',
+        body: JSON.stringify({ source, source_id: sourceId }),
+      }),
+
     stream: (trackId: number) =>
       request<TrackStreamResponse>(`/tracks/${trackId}/stream`),
   },

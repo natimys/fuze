@@ -10,6 +10,7 @@ from database.base import Base
 class TrackSource(str, enum.Enum):
     YANDEX = "yandex"
     SPOTIFY = "spotify"
+    YOUTUBE = "youtube"
 
 
 class Track(Base):

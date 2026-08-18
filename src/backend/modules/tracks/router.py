@@ -5,6 +5,7 @@ from .dependencies import get_tracks_service
 from .module import module
 from .schemas import (
     TrackDownloadResponse,
+    TrackAcquireRequest,
     TrackSearchResponse,
     TrackStreamResponse,
 )
@@ -19,11 +20,20 @@ router = APIRouter(
 
 @router.get("/search", response_model=TrackSearchResponse)
 async def search_tracks(
-        q: str = Query(..., description="Search query"),
+        q: str = Query(..., min_length=2, max_length=200, description="Search query"),
         service: TracksService = Depends(get_tracks_service),
 ):
     results = await service.search(q)
-    return TrackSearchResponse(data=results, query=q)
+    return TrackSearchResponse(query=q, **results)
+
+
+@router.post("/acquire", response_model=TrackDownloadResponse)
+async def acquire_track(body: TrackAcquireRequest, service: TracksService = Depends(get_tracks_service)):
+    try:
+        track = await service.acquire(body.source, body.source_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return TrackDownloadResponse(status="ok", track_id=track.id)
 
 
 @router.post("/{track_id}/download", response_model=TrackDownloadResponse)

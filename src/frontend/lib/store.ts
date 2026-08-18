@@ -18,7 +18,7 @@ interface PlayerState {
 interface PlayerActions {
   setQueue: (queue: TrackSearchResult[]) => void
   addToQueue: (track: TrackSearchResult) => void
-  removeFromQueue: (trackId: number) => void
+  removeFromQueue: (key: string) => void
   setCurrentTrack: (track: TrackSearchResult | null) => void
   setIsPlaying: (isPlaying: boolean) => void
   togglePlay: () => void
@@ -53,15 +53,16 @@ export const usePlayerStore = create<Store>((set, get) => ({
 
   addToQueue: (track) => {
     const { queue } = get()
-    const exists = queue.find((t) => t.id === track.id)
+    if (track.action === 'external' || track.track_id === null) return
+    const exists = queue.find((t) => t.key === track.key)
     if (!exists) {
       set({ queue: [...queue, track] })
     }
   },
 
-  removeFromQueue: (trackId) => {
+  removeFromQueue: (key) => {
     const { queue } = get()
-    set({ queue: queue.filter((t) => t.id !== trackId) })
+    set({ queue: queue.filter((t) => t.key !== key) })
   },
 
   setCurrentTrack: (track) => set({ currentTrack: track, currentTime: 0, duration: 0 }),
@@ -97,7 +98,7 @@ export const usePlayerStore = create<Store>((set, get) => ({
     const { queue, currentTrack, isShuffled } = get()
     if (!currentTrack || queue.length <= 1) return
 
-    const idx = queue.findIndex((t) => t.id === currentTrack.id)
+    const idx = queue.findIndex((t) => t.key === currentTrack.key)
     let nextIdx: number
 
     if (isShuffled) {
@@ -121,7 +122,7 @@ export const usePlayerStore = create<Store>((set, get) => ({
       return
     }
 
-    const idx = queue.findIndex((t) => t.id === currentTrack.id)
+    const idx = queue.findIndex((t) => t.key === currentTrack.key)
     const prevIdx = idx <= 0 ? queue.length - 1 : idx - 1
 
     set({ currentTrack: queue[prevIdx], currentTime: 0, duration: 0 })

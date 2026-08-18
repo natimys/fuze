@@ -136,7 +136,8 @@ export function Player() {
     setCurrentTime(0)
     setDuration(0)
 
-    api.tracks.stream(currentTrack.id).then((res) => {
+    if (currentTrack.track_id === null) return
+    api.tracks.stream(currentTrack.track_id).then((res) => {
       if (cancelled || !audio) return
       audio.src = res.url
       audio.load()

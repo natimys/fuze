@@ -14,7 +14,7 @@ export function NowPlaying() {
         <AnimatePresence mode="wait">
           {currentTrack?.cover_url ? (
             <motion.img
-              key={currentTrack.id}
+              key={currentTrack.key}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}

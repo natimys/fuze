@@ -1,4 +1,5 @@
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 
 from .models import Track, TrackSource
 
@@ -34,6 +35,17 @@ class TrackRepository:
         self.db.add(track)
         await self.db.commit()
         await self.db.refresh(track)
+        return track
+
+    async def upsert(self, **kwargs) -> Track:
+        stmt = insert(Track).values(**kwargs).on_conflict_do_nothing(
+            index_elements=[Track.source, Track.source_id]
+        )
+        await self.db.execute(stmt)
+        await self.db.commit()
+        track = await self.find_by_source(kwargs["source"], kwargs["source_id"])
+        if track is None:
+            raise RuntimeError("Track upsert failed")
         return track
 
     async def update(self, track: Track, **kwargs) -> Track:

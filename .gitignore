@@ -1,4 +1,5 @@
 .env
+src/frontend/.env.local
 .venv
 __pycache__
 /.mimocode/
