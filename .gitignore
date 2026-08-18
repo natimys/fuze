@@ -1,5 +1,9 @@
 .env
 .env.test
+.env.media
+artifacts/
+*~
+.*.un~
 src/frontend/.env.local
 src/backend/integrations/yt_data.json
 .venv

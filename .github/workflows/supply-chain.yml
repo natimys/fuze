@@ -1,0 +1,68 @@
+name: supply-chain
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  BACKEND_IMAGE: fuze-backend:supply-chain
+  FRONTEND_IMAGE: fuze-frontend:supply-chain
+  GRYPE_VERSION: v0.116.1
+  SYFT_VERSION: v1.50.0
+  GITLEAKS_VERSION: v8.30.0
+
+jobs:
+  operations-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build release images
+        run: |
+          docker build --tag "$BACKEND_IMAGE" --file src/backend/Dockerfile .
+          docker build --tag "$FRONTEND_IMAGE" src/frontend
+
+      - name: Verify pinned media binaries
+        run: |
+          docker run --rm --entrypoint /bin/sh "$BACKEND_IMAGE" -c \
+            '/app/src/backend/bin/yt-dlp --version && /app/src/backend/bin/ffmpeg -version && /app/src/backend/bin/node --version'
+
+      - name: Generate CycloneDX SBOMs
+        run: |
+          mkdir -p artifacts
+          docker save --output artifacts/backend.tar "$BACKEND_IMAGE"
+          docker save --output artifacts/frontend.tar "$FRONTEND_IMAGE"
+          docker run --rm -v "$PWD/artifacts:/scan:ro" \
+            "anchore/syft:$SYFT_VERSION" docker-archive:/scan/backend.tar \
+            -o cyclonedx-json > artifacts/backend.cdx.json
+          docker run --rm -v "$PWD/artifacts:/scan:ro" \
+            "anchore/syft:$SYFT_VERSION" docker-archive:/scan/frontend.tar \
+            -o cyclonedx-json > artifacts/frontend.cdx.json
+
+      - name: Scan images
+        run: |
+          docker run --rm -v "$PWD/artifacts:/scan:ro" \
+            "anchore/grype:$GRYPE_VERSION" docker-archive:/scan/backend.tar \
+            --only-fixed --fail-on critical
+          docker run --rm -v "$PWD/artifacts:/scan:ro" \
+            "anchore/grype:$GRYPE_VERSION" docker-archive:/scan/frontend.tar \
+            --only-fixed --fail-on critical
+
+      - name: Scan Git history for secrets
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" "ghcr.io/gitleaks/gitleaks:$GITLEAKS_VERSION" \
+            git --redact --verbose /repo
+
+      - name: Verify PostgreSQL backup and restore
+        run: python deploy/operations/verify_backup_restore.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyclonedx-sboms
+          path: artifacts/*.cdx.json
+          if-no-files-found: error
