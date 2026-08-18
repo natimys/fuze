@@ -1,5 +1,45 @@
 # Backend audit and remediation plan
 
+> Обновление 2026-08-18: исходный аудит ниже сохранён как исторический контекст и
+> частично устарел. Актуальный статус public-beta stabilization приведён здесь;
+> непроверенные release gates намеренно не отмечаются как выполненные.
+
+## Public beta stabilization — текущий статус
+
+Проверено и реализовано:
+
+- [x] Cookie-only access/refresh JWT, double-submit CSRF, server-side session
+  rotation/revocation и проверка актуального active user/role из PostgreSQL.
+- [x] `/api/v1`, разделённые liveness/readiness, production fail-fast настройки,
+  Redis rate limits, безопасные Docker build contexts и non-root backend/worker.
+- [x] Durable track state machine и Celery/Beat: idempotent acquire, retries,
+  leases, task fencing, recovery, Spotify discovery-only и polling API.
+- [x] Provider/cache/MinIO hardening, matching threshold, partial search results,
+  batch lookup и reconciliation без автоматического удаления orphan objects.
+- [x] Private owner/admin playlists с полным CRUD, повторяющимися треками,
+  атомарным reorder и frontend list/detail flows.
+- [x] Frontend cookie/CSRF auth, shared refresh, race-safe search, acquisition
+  polling, управляемый audio lifecycle, keyboard/touch и playlist UI.
+- [x] Три последовательные Alembic migrations; на отдельной test DB пройдены
+  upgrade, downgrade, повторный upgrade и drift check.
+- [x] `ruff check`, 41 backend test, frontend ESLint/typecheck, 9 Vitest tests,
+  production build и `npm audit` (0 vulnerabilities).
+- [x] Release-candidate Compose build/start: PostgreSQL, Redis, MinIO, backend,
+  worker, beat и frontend healthy; реальная recovery-задача Celery выполнена.
+
+Открытые внешние/нагрузочные release gates:
+
+- [ ] Playwright browser E2E для login → refresh → search → acquire → playback →
+  playlists (component/unit контракты покрыты, браузерный прогон не добавлен).
+- [ ] Live media Range test с production-like HTTPS reverse proxy и отдельным
+  least-privilege MinIO service account.
+- [ ] Нагрузочный gate: 20 параллельных acquire, p95 search/acquire и проверка
+  единственного фактического upload на production-like стенде.
+- [ ] Зафиксировать media binaries на этапе сборки вместо first-use setup
+  `asyncyt`, добавить image/SBOM/secret scan и backup/restore runbook.
+- [ ] До публичного выпуска подтвердить правовые условия YouTube-derived audio и
+  использования metadata Yandex/Spotify.
+
 Этот документ — рабочий чеклист аудита бэкенда Fuze. Пункты расположены сверху вниз по влиянию: сначала уязвимости, потеря контроля доступа и полностью сломанные сценарии, затем ошибки данных и архитектуры, в конце — качество, удобство разработки и косметические замечания.
 
 > Статус на 2026-08-07. Аудит выполнен без изменения кода. Модуль плейлистов находится в незавершённом и частично незакоммиченном состоянии.
@@ -650,4 +690,3 @@ Fixture добавляет CSRF header и тест ожидает CSRF cookie, �
 - [ ] Есть тест недостаточных прав.
 - [ ] Есть тест некорректных входных данных.
 - [x] Ruff и весь набор тестов проходят из корня проекта.
-

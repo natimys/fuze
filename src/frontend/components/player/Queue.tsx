@@ -1,10 +1,8 @@
 'use client'
 
-import { useState } from 'react'
 import { usePlayerStore } from '@/lib/store'
-import { api } from '@/lib/api'
 import { motion, AnimatePresence } from 'motion/react'
-import { X, Play, Spinner, ArrowDown } from '@phosphor-icons/react'
+import { X, Play } from '@phosphor-icons/react'
 
 function formatDuration(ms: number | null): string {
   if (!ms) return '--:--'
@@ -20,23 +18,9 @@ export function Queue() {
   const setCurrentTrack = usePlayerStore((s) => s.setCurrentTrack)
   const setIsPlaying = usePlayerStore((s) => s.setIsPlaying)
   const removeFromQueue = usePlayerStore((s) => s.removeFromQueue)
-  const [downloadingKey, setDownloadingKey] = useState<string | null>(null)
-
-  async function handlePlayTrack(track: typeof queue[0]) {
-    if (downloadingKey === track.key) return
-
-    setDownloadingKey(track.key)
-    try {
-      if (!track.already_downloaded && track.track_id !== null) {
-        await api.tracks.download(track.track_id)
-      }
-      setCurrentTrack(track)
-      setIsPlaying(true)
-    } catch {
-      // Handle error
-    } finally {
-      setDownloadingKey(null)
-    }
+  function handlePlayTrack(track: typeof queue[0]) {
+    if (track.key === currentTrack?.key) { setIsPlaying(true); return }
+    setCurrentTrack(track)
   }
 
   return (
@@ -55,7 +39,6 @@ export function Queue() {
           <AnimatePresence mode="popLayout">
             {queue.map((track, i) => {
               const isActive = track.key === currentTrack?.key
-              const isDownloading = downloadingKey === track.key
               return (
                 <motion.div
                   key={track.key}
@@ -64,17 +47,15 @@ export function Queue() {
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.2 }}
-                  onClick={() => handlePlayTrack(track)}
-                  className={`group flex items-center gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer ${
+                  className={`group flex items-center gap-2 px-2 py-1 rounded-lg transition-colors ${
                     isActive
                       ? 'bg-hover-strong'
                       : 'hover:bg-hover'
                   }`}
                 >
-                  <span className="w-5 text-[11px] font-mono text-text-muted text-center flex-shrink-0">
-                    {isDownloading ? (
-                      <Spinner size={12} className="text-text-muted animate-spin inline" />
-                    ) : isActive ? (
+                  <button type="button" onClick={() => handlePlayTrack(track)} className="flex flex-1 min-w-0 items-center gap-3 px-1 py-1 text-left rounded focus-visible:outline focus-visible:outline-2" aria-label={`Play ${track.title}`}>
+                    <span className="w-5 text-[11px] font-mono text-text-muted text-center flex-shrink-0">
+                    {isActive ? (
                       <Play size={10} weight="fill" className="text-text-primary inline" />
                     ) : (
                       i + 1
@@ -91,12 +72,13 @@ export function Queue() {
                   <span className="text-xs font-mono text-text-muted">
                     {formatDuration(track.duration_ms)}
                   </span>
+                  </button>
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation()
+                    onClick={() => {
                       removeFromQueue(track.key)
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-hover transition-all flex-shrink-0"
+                    className="opacity-60 group-hover:opacity-100 focus:opacity-100 p-2 rounded-md text-text-muted hover:text-text-primary hover:bg-hover transition-all flex-shrink-0"
+                    aria-label={`Remove ${track.title} from queue`}
                   >
                     <X size={14} />
                   </button>

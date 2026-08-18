@@ -21,6 +21,7 @@ export const audioContext = {
 }
 
 export function Player() {
+  const [authState, setAuthState] = useState<'checking' | 'ready' | 'denied'>('checking')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const user = usePlayerStore((s) => s.user)
@@ -34,23 +35,22 @@ export function Player() {
   const setCurrentTrack = usePlayerStore((s) => s.setCurrentTrack)
   const setCurrentTime = usePlayerStore((s) => s.setCurrentTime)
   const setDuration = usePlayerStore((s) => s.setDuration)
+  const setIsLoading = usePlayerStore((s) => s.setIsLoading)
+  const setPlaybackError = usePlayerStore((s) => s.setPlaybackError)
+  const isRepeating = usePlayerStore((s) => s.isRepeating)
+  const hydrate = usePlayerStore((s) => s.hydrate)
   const setVolume = usePlayerStore((s) => s.setVolume)
   const playNext = usePlayerStore((s) => s.playNext)
   const playPrev = usePlayerStore((s) => s.playPrev)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
-    api.auth.me().then(setUser).catch(() => {
-      window.location.href = '/auth'
+    hydrate()
+    api.auth.me().then((value) => { setUser(value); setAuthState('ready') }).catch(() => {
+      setAuthState('denied')
+      window.location.replace('/auth')
     })
-  }, [setUser])
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      api.auth.refresh()
-    }, 10 * 60 * 1000)
-    return () => clearInterval(interval)
-  }, [])
+  }, [hydrate, setUser])
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -94,15 +94,16 @@ export function Player() {
           break
         case 'ArrowLeft':
           e.preventDefault()
-          if (queue.length > 1) {
-            playPrev()
-          }
+          if (audioContext.current && audioContext.current.currentTime > 3) {
+            audioContext.current.currentTime = 0
+            setCurrentTime(0)
+          } else if (queue.length > 0) playPrev()
           break
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentTrack, isPlaying, volume, queue.length, setIsPlaying, setVolume, playNext, playPrev])
+  }, [currentTrack, isPlaying, volume, queue.length, setIsPlaying, setVolume, setCurrentTime, playNext, playPrev])
 
   useEffect(() => {
     if (!audioRef.current) {
@@ -110,54 +111,80 @@ export function Player() {
       audioRef.current = audio
       audioContext.current = audio
 
-      audio.addEventListener('timeupdate', () => {
+      const onTime = () => {
         if (!audioContext.isDragging) {
           setCurrentTime(audio.currentTime)
         }
-      })
-
-      audio.addEventListener('loadedmetadata', () => {
-        setDuration(audio.duration)
-      })
-
-      audio.addEventListener('ended', () => {
-        setIsPlaying(false)
-      })
+      }
+      const onMetadata = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
+      const onError = () => {
+        if (!audio.hasAttribute('src')) return
+        setIsPlaying(false); setIsLoading(false); setPlaybackError('Playback failed. Retry the track.')
+      }
+      audio.addEventListener('timeupdate', onTime)
+      audio.addEventListener('loadedmetadata', onMetadata)
+      audio.addEventListener('error', onError)
+      return () => {
+        audio.pause(); audio.removeAttribute('src'); audio.load()
+        audio.removeEventListener('timeupdate', onTime)
+        audio.removeEventListener('loadedmetadata', onMetadata)
+        audio.removeEventListener('error', onError)
+        audioContext.current = null
+        audioRef.current = null
+      }
     }
-  }, [setCurrentTime, setDuration, setIsPlaying])
+  }, [setCurrentTime, setDuration, setIsPlaying, setIsLoading, setPlaybackError])
 
   useEffect(() => {
     const audio = audioRef.current
-    if (!audio || !currentTrack) return
+    if (!audio) return
+    const onEnded = () => {
+      if (isRepeating) {
+        audio.currentTime = 0
+        void audio.play().then(() => setIsPlaying(true)).catch(() => setPlaybackError('Playback could not restart.'))
+      } else playNext()
+    }
+    audio.addEventListener('ended', onEnded)
+    return () => audio.removeEventListener('ended', onEnded)
+  }, [isRepeating, playNext, setIsPlaying, setPlaybackError])
 
-    let cancelled = false
-
-    setIsPlaying(true)
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    audio.pause()
+    audio.removeAttribute('src')
+    audio.load()
+    setIsPlaying(false)
     setCurrentTime(0)
     setDuration(0)
-
-    if (currentTrack.track_id === null) return
-    api.tracks.stream(currentTrack.track_id).then((res) => {
-      if (cancelled || !audio) return
+    setPlaybackError(null)
+    if (!currentTrack?.track_id || currentTrack.availability !== 'ready') return
+    const controller = new AbortController()
+    setIsLoading(true)
+    void api.tracks.stream(currentTrack.track_id, controller.signal).then(async (res) => {
+      if (controller.signal.aborted) return
       audio.src = res.url
       audio.load()
-      audio.play().catch(() => {})
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [currentTrack, setIsPlaying, setCurrentTime, setDuration])
+      await audio.play()
+      if (!controller.signal.aborted) setIsPlaying(true)
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setPlaybackError(error instanceof Error ? error.message : 'Unable to start playback.')
+    }).finally(() => { if (!controller.signal.aborted) setIsLoading(false) })
+    return () => controller.abort()
+  }, [currentTrack, setIsPlaying, setCurrentTime, setDuration, setIsLoading, setPlaybackError])
 
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
     if (isPlaying) {
-      audio.play().catch(() => {})
+      void audio.play().then(() => setPlaybackError(null)).catch(() => {
+        setIsPlaying(false)
+        setPlaybackError('Playback was blocked or the stream is unavailable.')
+      })
     } else {
       audio.pause()
     }
-  }, [isPlaying])
+  }, [isPlaying, setIsPlaying, setPlaybackError])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -178,6 +205,10 @@ export function Player() {
       setDuration(0)
     }
   }, [queue.length, currentTrack, setCurrentTrack, setIsPlaying, setCurrentTime, setDuration])
+
+  if (authState !== 'ready') {
+    return <div className="flex h-dvh items-center justify-center bg-bg text-sm text-text-muted" role="status">{authState === 'checking' ? 'Checking session…' : 'Redirecting…'}</div>
+  }
 
   return (
     <div className="flex h-dvh bg-bg overflow-hidden">

@@ -1,11 +1,12 @@
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import User
 from core.enums import UserRole
 
 
 class UserRepository:
-    def __init__(self, db):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
     async def get_user_by_email(self, email: str) -> User | None:
@@ -19,7 +20,7 @@ class UserRepository:
         return result.scalar_one_or_none()
 
     async def get_users(self, skip: int = 0, limit: int = 10) -> list[User]:
-        query = select(User).offset(skip).limit(limit)
+        query = select(User).order_by(User.id).offset(skip).limit(limit)
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
@@ -33,15 +34,31 @@ class UserRepository:
     ) -> User:
         new_user = User(email=email, name=name, password=password, role=role)
         self.db.add(new_user)
-        await self.db.commit()
-        await self.db.refresh(new_user)
+        await self.db.flush()
         return new_user
 
     async def update_user(self, user: User) -> User:
-        await self.db.commit()
-        await self.db.refresh(user)
+        await self.db.flush()
         return user
 
     async def delete_user(self, user: User) -> None:
         await self.db.delete(user)
+        await self.db.flush()
+
+    async def lock_active_admin_ids(self) -> list[int]:
+        result = await self.db.execute(
+            select(User.id)
+            .where(User.role == UserRole.ADMIN, User.is_active.is_(True))
+            .order_by(User.id)
+            .with_for_update()
+        )
+        return list(result.scalars().all())
+
+    async def commit(self) -> None:
         await self.db.commit()
+
+    async def rollback(self) -> None:
+        await self.db.rollback()
+
+    async def refresh(self, user: User) -> None:
+        await self.db.refresh(user)

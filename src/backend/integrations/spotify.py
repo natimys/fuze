@@ -22,7 +22,7 @@ class SpotifyQuotaExceeded(SpotifyError):
 
 
 class SpotifyDisabled(SpotifyError):
-    status = "unavailable"
+    status = "disabled"
 
 
 @dataclass
@@ -33,10 +33,15 @@ class SpotifyToken:
 
 class SpotifyClient:
     def __init__(self, client: httpx.AsyncClient | None = None):
-        self._client = client or httpx.AsyncClient()
+        self._client: httpx.AsyncClient | None = client or httpx.AsyncClient()
         self._token: SpotifyToken | None = None
         self._token_lock = asyncio.Lock()
         self._retry_after_until = 0.0
+
+    def _http(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient()
+        return self._client
 
     async def _get_token(self, force: bool = False) -> str:
         now = time.monotonic()
@@ -48,13 +53,14 @@ class SpotifyClient:
                 return self._token.value
             settings = get_settings()
             try:
-                response = await self._client.post(
+                response = await self._http().post(
                     "https://accounts.spotify.com/api/token",
                     data={"grant_type": "client_credentials"},
                     auth=(
                         settings.SPOTIFY_CLIENT_ID or "",
                         settings.SPOTIFY_CLIENT_SECRET.get_secret_value()
-                        if settings.SPOTIFY_CLIENT_SECRET else "",
+                        if settings.SPOTIFY_CLIENT_SECRET
+                        else "",
                     ),
                 )
                 response.raise_for_status()
@@ -72,7 +78,7 @@ class SpotifyClient:
         token = await self._get_token()
         for attempt in range(2):
             try:
-                response = await self._client.get(
+                response = await self._http().get(
                     "https://api.spotify.com/v1/search",
                     params={"q": query, "type": "track", "limit": 10, "market": market},
                     headers={"Authorization": f"Bearer {token}"},
@@ -106,7 +112,7 @@ class SpotifyClient:
         token = await self._get_token()
         for attempt in range(2):
             try:
-                response = await self._client.get(
+                response = await self._http().get(
                     f"https://api.spotify.com/v1/tracks/{track_id}",
                     params={"market": market},
                     headers={"Authorization": f"Bearer {token}"},
@@ -130,6 +136,11 @@ class SpotifyClient:
             return self._map_track(item)
         raise SpotifyError("Spotify authorization failed")
 
+    async def close(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
     @staticmethod
     def _map_track(item: dict[str, Any]) -> dict[str, Any]:
         album = item.get("album") or {}
@@ -145,13 +156,14 @@ class SpotifyClient:
         return {
             "source_id": str(item["id"]),
             "title": item.get("name") or "Untitled",
-            "artist": ", ".join(a.get("name", "") for a in artists if a.get("name")) or "Unknown",
+            "artist": ", ".join(a.get("name", "") for a in artists if a.get("name"))
+            or "Unknown",
             "album": album.get("name"),
             "year": year,
             "duration_ms": item.get("duration_ms"),
             "cover_url": images[0].get("url") if images else None,
             "external_url": (item.get("external_urls") or {}).get("spotify")
-                or f"https://open.spotify.com/track/{item['id']}",
+            or f"https://open.spotify.com/track/{item['id']}",
         }
 
 

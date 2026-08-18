@@ -86,6 +86,7 @@ Edit `.env` and set the required values:
 
 ```env.example
 # Database
+ENVIRONMENT=development
 DB_HOST=db
 DB_PORT=5432
 DB_USER=postgres
@@ -93,6 +94,7 @@ DB_PASSWORD=postgres
 DB_NAME=database
 
 REDIS_URL=redis://redis:6379/0
+CELERY_BROKER_URL=redis://redis:6379/1
 
 # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 JWT_SECURITY_KEY="CHANGE-THIS-PLEASE"
@@ -110,18 +112,30 @@ CORS_ALLOW_HEADERS=["*"]
 # Tokens configuration
 ACCESS_TOKEN_EXPIRES=15
 REFRESH_TOKEN_EXPIRES=30
+COOKIE_SECURE=false # true behind production HTTPS
+COOKIE_SAMESITE=lax
 
 # MinIO S3 configuration
-MINIO_ENDPOINT=localhost:9000
-MINIO_EXTERNAL_ENDPOINT=minio:9000
+MINIO_ENDPOINT=minio:9000
+MINIO_EXTERNAL_ENDPOINT=localhost:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 MINIO_BUCKET=tracks
 MINIO_SECURE=false
+MINIO_EXTERNAL_SECURE=false
+
+# Redis-backed per-client request limits
+AUTH_RATE_LIMIT_REQUESTS=20
+SEARCH_RATE_LIMIT_REQUESTS=60
+ACQUIRE_RATE_LIMIT_REQUESTS=20
 
 # DEBUG
 DEBUG=true
 ```
+
+Production startup fails fast when cookies or the browser-facing MinIO endpoint
+are not HTTPS, debug mode or development database/object-storage credentials are
+still enabled, the JWT key is too short, or credentialed CORS contains `*`.
 
 ### Running
 
@@ -131,7 +145,7 @@ DEBUG=true
 docker compose up -d
 ```
 
-This starts all services: PostgreSQL, Redis, MinIO, backend, and frontend.
+This starts PostgreSQL, Redis, MinIO, the API, Celery worker/beat, and frontend.
 
 **Local development:**
 
@@ -149,6 +163,17 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 # In another terminal, start the frontend
 cd src/frontend
 npm run dev
+```
+
+### Tests
+
+Tests refuse to run against a database whose name does not contain `test` or
+matches the configured production database.
+
+```bash
+copy .env.test.example .env.test  # use cp on Linux/macOS
+docker compose --profile test up -d db-test redis minio
+uv run pytest
 ```
 
 ### Access
@@ -226,7 +251,8 @@ The backend uses a modular architecture. Each module lives in `src/backend/modul
 |--------|-------------|
 | `auth` | JWT authentication, login, registration, token refresh |
 | `users` | User profiles and role-based access control |
-| `tracks` | Search across Yandex Music, download via YouTube, stream from MinIO |
+| `tracks` | Search across providers, queue downloads via Celery, stream from MinIO |
+| `playlists` | Private user playlists and ordered playlist items |
 
 ---
 

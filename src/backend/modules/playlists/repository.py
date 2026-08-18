@@ -1,54 +1,141 @@
-from sqlalchemy import select, func, delete
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
-from .models import Playlist, PlaylistTrack
+from sqlalchemy import case, func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from modules.tracks.models import Track
+
+from .models import Playlist, PlaylistItem
 
 
 class PlaylistsRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_tracks_count(self, playlist_id: int) -> int:
-        query = select(func.count(PlaylistTrack.track_id)).where(
-            PlaylistTrack.playlist_id == playlist_id
+    async def list_with_counts(
+        self, *, owner_id: int | None
+    ) -> list[tuple[Playlist, int]]:
+        statement = (
+            select(Playlist, func.count(PlaylistItem.id).label("tracks_count"))
+            .outerjoin(PlaylistItem)
+            .group_by(Playlist.id)
+            .order_by(Playlist.id)
         )
-        result = await self.db.execute(query)
+        if owner_id is not None:
+            statement = statement.where(Playlist.owner_id == owner_id)
+        result = await self.db.execute(statement)
+        return [(playlist, count) for playlist, count in result.all()]
+
+    async def get_by_id(
+        self, playlist_id: int, *, with_items: bool = False, for_update: bool = False
+    ) -> Playlist | None:
+        statement = select(Playlist).where(Playlist.id == playlist_id)
+        if with_items:
+            statement = statement.options(
+                selectinload(Playlist.items).selectinload(PlaylistItem.track)
+            )
+        if for_update:
+            statement = statement.with_for_update()
+        result = await self.db.execute(statement)
         return result.scalar_one_or_none()
 
-    async def get_by_id(self, id: int) -> Playlist | None:
-        query = select(Playlist).where(Playlist.id == id)
-        result = await self.db.execute(query)
-        return result.scalar_one_or_none()
-
-    async def create(self, **kwargs) -> Playlist:
-        playlist = Playlist(**kwargs)
+    async def create(self, **values: Any) -> Playlist:
+        playlist = Playlist(**values)
         self.db.add(playlist)
-        await self.db.commit()
-        await self.db.refresh(playlist)
+        await self.db.flush()
         return playlist
 
-    async def get_next_position(self, playlist_id: int) -> int | None:
-        query = select(func.coalesce(func.max(PlaylistTrack.position) - 1), 1).where(
-            PlaylistTrack.playlist_id == playlist_id
-        )
-        result = await self.db.execute(query)
+    async def get_track(self, track_id: int) -> Track | None:
+        result = await self.db.execute(select(Track).where(Track.id == track_id))
         return result.scalar_one_or_none()
 
-    async def add_track(self, playlist_id: int, track_id: int) -> PlaylistTrack:
-        position = await self.get_next_position(playlist_id)
-        playlist_track = PlaylistTrack(
-            playlist_id=playlist_id,
-            track_id=track_id,
-            position=position,
+    async def next_position(self, playlist_id: int) -> int:
+        result = await self.db.execute(
+            select(func.coalesce(func.max(PlaylistItem.position), -1) + 1).where(
+                PlaylistItem.playlist_id == playlist_id
+            )
         )
-        self.db.add(playlist_track)
-        await self.db.commit()
-        return playlist_track
+        return result.scalar_one()
 
-    async def remove_track(self, playlist_id: int, track_id: int) -> None:
-        query = delete(PlaylistTrack).where(
-            PlaylistTrack.playlist_id == playlist_id,
-            PlaylistTrack.track_id == track_id,
+    async def add_item(
+        self, *, playlist_id: int, track_id: int, position: int
+    ) -> PlaylistItem:
+        item = PlaylistItem(
+            playlist_id=playlist_id, track_id=track_id, position=position
         )
-        await self.db.execute(query)
+        self.db.add(item)
+        await self.db.flush()
+        return item
+
+    async def get_item(self, playlist_id: int, item_id: int) -> PlaylistItem | None:
+        result = await self.db.execute(
+            select(PlaylistItem).where(
+                PlaylistItem.playlist_id == playlist_id,
+                PlaylistItem.id == item_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def delete_item(self, item: PlaylistItem) -> None:
+        playlist_id = item.playlist_id
+        await self.db.delete(item)
+        await self.db.flush()
+        remaining_ids = await self.item_ids(playlist_id)
+        await self.reorder(playlist_id, remaining_ids)
+
+    async def reorder(self, playlist_id: int, item_ids: list[int]) -> None:
+        if not item_ids:
+            return
+        positions = {item_id: position for position, item_id in enumerate(item_ids)}
+        # Move every row into a disjoint range first. This makes swaps safe with a
+        # non-deferrable unique constraint on (playlist_id, position).
+        await self.db.execute(
+            update(PlaylistItem)
+            .where(
+                PlaylistItem.playlist_id == playlist_id,
+                PlaylistItem.id.in_(item_ids),
+            )
+            .values(position=-PlaylistItem.position - 1)
+        )
+        await self.db.execute(
+            update(PlaylistItem)
+            .where(
+                PlaylistItem.playlist_id == playlist_id,
+                PlaylistItem.id.in_(item_ids),
+            )
+            .values(position=case(positions, value=PlaylistItem.id))
+        )
+
+    async def delete(self, playlist: Playlist) -> None:
+        await self.db.delete(playlist)
+        await self.db.flush()
+
+    async def flush(self) -> None:
+        await self.db.flush()
+
+    async def touch(self, playlist_id: int) -> None:
+        await self.db.execute(
+            update(Playlist)
+            .where(Playlist.id == playlist_id)
+            .values(updated_at=func.now())
+        )
+
+    async def item_ids(self, playlist_id: int) -> list[int]:
+        result = await self.db.execute(
+            select(PlaylistItem.id)
+            .where(PlaylistItem.playlist_id == playlist_id)
+            .order_by(PlaylistItem.position)
+        )
+        return list(result.scalars().all())
+
+    async def commit(self) -> None:
         await self.db.commit()
+
+    async def rollback(self) -> None:
+        await self.db.rollback()
+
+    async def refresh(
+        self, instance: Any, *, attribute_names: list[str] | None = None
+    ) -> None:
+        await self.db.refresh(instance, attribute_names=attribute_names)

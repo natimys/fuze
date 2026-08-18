@@ -1,13 +1,17 @@
 from typing import Literal
+from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+
+from .models import TrackDownloadStatus
 
 
 class TrackSearchResult(BaseModel):
     key: str
     track_id: int | None = None
     source: Literal["yandex", "youtube", "spotify"]
-    action: Literal["playable", "external"]
+    capability: Literal["acquire", "external"]
+    availability: Literal["remote", "queued", "downloading", "ready", "failed"]
     source_id: str
     title: str
     artist: str
@@ -20,7 +24,7 @@ class TrackSearchResult(BaseModel):
 
 
 class ProviderState(BaseModel):
-    status: Literal["ok", "unavailable", "rate_limited", "quota_exceeded"]
+    status: Literal["ok", "disabled", "unavailable", "rate_limited", "quota_exceeded"]
     cached: bool = False
 
 
@@ -33,7 +37,15 @@ class TrackSearchResponse(BaseModel):
 
 class TrackAcquireRequest(BaseModel):
     source: Literal["yandex", "youtube", "spotify"]
-    source_id: str
+    source_id: str = Field(min_length=1, max_length=128)
+
+    @field_validator("source_id")
+    @classmethod
+    def strip_source_id(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("source_id must not be blank")
+        return value
 
 
 class TrackRead(BaseModel):
@@ -46,6 +58,13 @@ class TrackRead(BaseModel):
     cover_url: str | None = None
     source: str
     source_id: str
+    download_status: TrackDownloadStatus
+    download_attempts: int
+    download_error_code: str | None = None
+    download_error_message: str | None = None
+    download_requested_at: datetime | None = None
+    download_started_at: datetime | None = None
+    download_finished_at: datetime | None = None
     model_config = {"from_attributes": True}
 
 
@@ -53,6 +72,6 @@ class TrackStreamResponse(BaseModel):
     url: str
 
 
-class TrackDownloadResponse(BaseModel):
-    status: str
+class TrackAcquireResponse(BaseModel):
+    status: TrackDownloadStatus
     track_id: int

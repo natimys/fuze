@@ -1,8 +1,9 @@
 .env
+.env.test
 src/frontend/.env.local
+src/backend/integrations/yt_data.json
 .venv
 __pycache__
 /.mimocode/
 Fuze.egg-info
 bin
-docker-compose.yml

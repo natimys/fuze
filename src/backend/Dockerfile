@@ -20,21 +20,27 @@ FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
-COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/src/backend /app/src/backend
+RUN groupadd --system fuze \
+    && useradd --system --gid fuze --home-dir /app --no-create-home fuze
 
-COPY src/backend/alembic.ini .
-COPY src/backend/alembic ./alembic
+COPY --from=builder --chown=fuze:fuze /app/.venv /app/.venv
+COPY --from=builder --chown=fuze:fuze /app/src/backend /app/src/backend
+
+COPY --chown=fuze:fuze src/backend/alembic.ini .
+COPY --chown=fuze:fuze src/backend/alembic ./alembic
 
 ENV PATH="/app/.venv/bin:$PATH"
-ENV PYTHONPATH="/app/src"
+ENV PYTHONPATH="/app/src/backend"
 
 WORKDIR /app/src/backend
 
-COPY src/backend/entrypoint.sh .
+COPY --chown=fuze:fuze src/backend/entrypoint.sh .
 
 RUN chmod +x entrypoint.sh
+
+USER fuze
 
 EXPOSE 8000
 
 ENTRYPOINT ["./entrypoint.sh"]
+CMD ["api"]

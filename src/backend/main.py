@@ -1,20 +1,29 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
+import re
+from uuid import uuid4
 
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
+from sqlalchemy import text
 
 from core.exceptions import AppException
 from core.modules import register_modules
 from core.security import jwt_security
 from core.settings import get_settings
 from database.engine import create_engine_and_sessionmaker
+from integrations import close_integrations
+from integrations.cache import get_redis
+from integrations.storage import ensure_bucket, storage_ready
 
-__version__ = version("fuze")
+try:
+    __version__ = version("fuze")
+except PackageNotFoundError:
+    __version__ = "0.1.0"
 
 
 @asynccontextmanager
@@ -27,13 +36,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.engine = engine
     app.state.session_maker = session_maker
 
+    try:
+        await ensure_bucket()
+    except Exception as exc:
+        logger.warning("Object storage is not ready at startup: {}", type(exc).__name__)
+
     yield
 
+    await close_integrations()
     await engine.dispose()
     logger.info("Database engine disposed")
 
 
 settings = get_settings()
+REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 app = FastAPI(
     lifespan=lifespan,
     title="fuze",
@@ -43,7 +59,7 @@ app = FastAPI(
 
 jwt_security.handle_errors(app)
 
-register_modules(app)
+register_modules(app, prefix=settings.API_PREFIX)
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,6 +68,20 @@ app.add_middleware(
     allow_methods=settings.CORS_ALLOW_METHODS,
     allow_headers=settings.CORS_ALLOW_HEADERS,
 )
+
+
+@app.middleware("http")
+async def request_context(request: Request, call_next):
+    supplied_request_id = request.headers.get("X-Request-ID", "")
+    request_id = (
+        supplied_request_id
+        if REQUEST_ID_PATTERN.fullmatch(supplied_request_id)
+        else str(uuid4())
+    )
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 
 @app.exception_handler(AppException)
@@ -73,9 +103,35 @@ async def root():
     }
 
 
-@app.get("/health/", status_code=200)
-async def health():
-    return {"message": "ok"}
+@app.get("/health/live", status_code=200, include_in_schema=False)
+async def liveness():
+    return {"status": "ok"}
+
+
+@app.get("/health/ready", status_code=200, include_in_schema=False)
+async def readiness(request: Request):
+    checks: dict[str, str] = {}
+    try:
+        async with request.app.state.session_maker() as session:
+            await session.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception:
+        checks["database"] = "unavailable"
+
+    try:
+        redis = await get_redis()
+        await redis.ping()
+        checks["redis"] = "ok"
+    except Exception:
+        checks["redis"] = "unavailable"
+
+    checks["storage"] = "ok" if await storage_ready() else "unavailable"
+
+    if any(value != "ok" for value in checks.values()):
+        return JSONResponse(
+            status_code=503, content={"status": "not_ready", "checks": checks}
+        )
+    return {"status": "ready", "checks": checks}
 
 
 if __name__ == "__main__":

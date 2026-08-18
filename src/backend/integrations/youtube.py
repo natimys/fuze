@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from asyncyt import AsyncYT, DownloadConfig, VideoInfo
@@ -7,13 +8,17 @@ from asyncyt.enums import AudioCodec, Quality
 from core.settings import BACKEND_DIR
 
 _downloader: AsyncYT | None = None
+_downloader_lock = asyncio.Lock()
 
 
 async def get_downloader() -> AsyncYT:
     global _downloader
     if _downloader is None:
-        _downloader = AsyncYT(bin_dir=BACKEND_DIR / "bin")
-        await _downloader.setup_binaries()
+        async with _downloader_lock:
+            if _downloader is None:
+                downloader = AsyncYT(bin_dir=BACKEND_DIR / "bin")
+                await downloader.setup_binaries()
+                _downloader = downloader
     return _downloader
 
 

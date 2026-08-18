@@ -7,6 +7,12 @@ import { MusicNote, Spinner } from '@phosphor-icons/react'
 export function NowPlaying() {
   const currentTrack = usePlayerStore((s) => s.currentTrack)
   const isLoading = usePlayerStore((s) => s.isLoading)
+  const playbackError = usePlayerStore((s) => s.playbackError)
+  const currentTrackId = currentTrack?.track_id
+  const retry = () => {
+    if (!currentTrack || !currentTrackId) return
+    usePlayerStore.getState().setCurrentTrack({ ...currentTrack })
+  }
 
   return (
     <div className="flex flex-col items-center">
@@ -64,6 +70,12 @@ export function NowPlaying() {
           </>
         )}
       </div>
+      {playbackError && (
+        <div className="mt-3 text-center" role="alert">
+          <p className="text-xs text-red-400">{playbackError}</p>
+          <button type="button" onClick={retry} className="mt-2 text-xs underline text-text-secondary hover:text-text-primary">Retry</button>
+        </div>
+      )}
     </div>
   )
 }

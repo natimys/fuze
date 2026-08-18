@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 
 from yandex_music import ClientAsync
@@ -5,6 +6,7 @@ from yandex_music import ClientAsync
 from core.settings import get_settings
 
 _client: ClientAsync | None = None
+_client_lock = asyncio.Lock()
 
 
 @dataclass
@@ -21,12 +23,15 @@ class YandexTrackInfo:
 async def get_client() -> ClientAsync:
     global _client
     if _client is None:
-        settings = get_settings()
-        token = settings.YANDEX_ACCESS_TOKEN
-        if token is None:
-            raise ValueError("YANDEX_ACCESS_TOKEN is not configured")
-        _client = ClientAsync(token=token.get_secret_value())
-        await _client.init()
+        async with _client_lock:
+            if _client is None:
+                settings = get_settings()
+                token = settings.YANDEX_ACCESS_TOKEN
+                if token is None:
+                    raise ValueError("YANDEX_ACCESS_TOKEN is not configured")
+                client = ClientAsync(token=token.get_secret_value())
+                await client.init()
+                _client = client
     return _client
 
 
@@ -41,13 +46,15 @@ async def search_yandex(query: str) -> list[YandexTrackInfo]:
         album = t.albums[0].title if t.albums else None
         year = t.albums[0].year if t.albums else None
         cover_url = t.get_cover_url(size="600x600") if t.cover_uri else None
-        tracks.append(YandexTrackInfo(
-            title=t.title,
-            artist=artist,
-            album=album,
-            year=year,
-            duration_ms=t.duration_ms,
-            cover_url=cover_url,
-            track_id=str(t.id),
-        ))
+        tracks.append(
+            YandexTrackInfo(
+                title=t.title,
+                artist=artist,
+                album=album,
+                year=year,
+                duration_ms=t.duration_ms,
+                cover_url=cover_url,
+                track_id=str(t.id),
+            )
+        )
     return tracks

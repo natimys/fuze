@@ -75,6 +75,8 @@ export default function AuthPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
+                  minLength={1}
+                  maxLength={100}
                   className="w-full h-10 bg-hover-strong border border-border rounded-lg px-3 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-accent-dim transition-colors"
                 />
               </div>
@@ -106,6 +108,8 @@ export default function AuthPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                minLength={8}
+                maxLength={128}
                 className="w-full h-10 bg-hover-strong border border-border rounded-lg px-3 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-accent-dim transition-colors"
               />
             </div>

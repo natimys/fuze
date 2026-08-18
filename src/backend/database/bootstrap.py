@@ -4,11 +4,14 @@ from importlib.util import find_spec
 from core.modules import iter_module_names, load_module_definition
 from loguru import logger
 
+
 def bootstrap_models():
     for module_name in iter_module_names():
         module = load_module_definition(module_name)
         if module is None:
-            logger.warning(f"🔁 Skipping <{module_name}>. Module definition not found",)
+            logger.warning(
+                f"🔁 Skipping <{module_name}>. Module definition not found",
+            )
             continue
 
         if not module.active:

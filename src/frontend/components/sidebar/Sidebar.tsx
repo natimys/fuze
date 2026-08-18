@@ -2,7 +2,8 @@
 
 import { usePlayerStore } from '@/lib/store'
 import { api } from '@/lib/api'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { useEffect, useRef, useState } from 'react'
 import {
   House,
   ListMagnifyingGlass,
@@ -20,20 +21,45 @@ interface SidebarProps {
 
 const navItems = [
   { icon: House, label: 'Home', href: '/player' },
-  { icon: ListMagnifyingGlass, label: 'Playlists', href: '#' },
-  { icon: Heart, label: 'Favorites', href: '#' },
-  { icon: Gear, label: 'Settings', href: '#' },
+  { icon: ListMagnifyingGlass, label: 'Playlists', href: '/player/playlists' },
 ]
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const user = usePlayerStore((s) => s.user)
   const setUser = usePlayerStore((s) => s.setUser)
   const router = useRouter()
+  const pathname = usePathname()
+  const [logoutError, setLogoutError] = useState<string | null>(null)
+  const panelRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const panel = panelRef.current
+    const selector = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    window.requestAnimationFrame(() => panel?.querySelector<HTMLElement>(selector)?.focus())
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); return }
+      if (event.key !== 'Tab' || !panel) return
+      const controls = [...panel.querySelectorAll<HTMLElement>(selector)]
+      if (!controls.length) { event.preventDefault(); return }
+      const index = controls.indexOf(document.activeElement as HTMLElement)
+      if (event.shiftKey && index <= 0) { event.preventDefault(); controls.at(-1)?.focus() }
+      else if (!event.shiftKey && index === controls.length - 1) { event.preventDefault(); controls[0].focus() }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => { document.removeEventListener('keydown', onKeyDown); previous?.focus() }
+  }, [isOpen, onClose])
 
   async function handleLogout() {
-    await api.auth.logout()
-    setUser(null)
-    router.push('/auth')
+    setLogoutError(null)
+    try {
+      await api.auth.logout()
+      setUser(null)
+      router.push('/auth')
+    } catch (error) {
+      setLogoutError(error instanceof Error ? error.message : 'Sign out failed. Please retry.')
+    }
   }
 
   return (
@@ -54,6 +80,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       <AnimatePresence>
         {isOpen && (
           <motion.aside
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
             initial={{ x: -280 }}
             animate={{ x: 0 }}
             exit={{ x: -280 }}
@@ -74,12 +104,16 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 <a
                   key={item.label}
                   href={item.href}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-text-secondary hover:text-text-primary hover:bg-hover transition-colors"
+                  aria-current={pathname === item.href || (item.href !== '/player' && pathname.startsWith(`${item.href}/`)) ? 'page' : undefined}
+                  onClick={onClose}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-text-primary ${pathname === item.href || (item.href !== '/player' && pathname.startsWith(`${item.href}/`)) ? 'bg-hover-strong text-text-primary' : 'text-text-secondary hover:text-text-primary hover:bg-hover'}`}
                 >
                   <item.icon size={18} weight="regular" />
                   <span>{item.label}</span>
                 </a>
               ))}
+              <div className="mt-2 flex items-center gap-3 px-3 py-2 text-xs text-text-muted" aria-disabled="true"><Heart size={16} aria-hidden="true" /><span>Favorites <span className="sr-only">is </span>(coming later)</span></div>
+              <div className="flex items-center gap-3 px-3 py-2 text-xs text-text-muted" aria-disabled="true"><Gear size={16} aria-hidden="true" /><span>Settings <span className="sr-only">is </span>(coming later)</span></div>
             </nav>
 
             <div className="p-3 border-t border-border">
@@ -101,6 +135,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   </button>
                 </div>
               )}
+              {logoutError && <p role="alert" className="px-3 pb-2 text-xs text-red-400">{logoutError}</p>}
             </div>
           </motion.aside>
         )}

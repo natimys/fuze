@@ -9,6 +9,7 @@ import {
   Shuffle,
   Repeat,
 } from '@phosphor-icons/react'
+import { audioContext } from './Player'
 
 export function Controls() {
   const isPlaying = usePlayerStore((s) => s.isPlaying)
@@ -22,9 +23,16 @@ export function Controls() {
   const playNext = usePlayerStore((s) => s.playNext)
   const playPrev = usePlayerStore((s) => s.playPrev)
 
-  const hasSingleTrack = queue.length <= 1
   const canGoNext = queue.length > 1 && currentTrack
-  const canGoPrev = queue.length > 1 && currentTrack
+
+  function previous() {
+    if (audioContext.current && audioContext.current.currentTime > 3) {
+      audioContext.current.currentTime = 0
+      usePlayerStore.getState().setCurrentTime(0)
+      return
+    }
+    playPrev()
+  }
 
   return (
     <div className="flex items-center gap-5">
@@ -41,10 +49,10 @@ export function Controls() {
       </button>
 
       <button
-        onClick={playPrev}
-        disabled={!canGoPrev}
+        onClick={previous}
+        disabled={!currentTrack}
         className={`p-1.5 rounded-md transition-colors ${
-          canGoPrev
+          currentTrack
             ? 'text-accent-dim hover:text-text-primary'
             : 'text-text-muted opacity-30 cursor-not-allowed'
         }`}
