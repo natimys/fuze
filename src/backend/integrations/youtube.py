@@ -17,7 +17,21 @@ async def get_downloader() -> AsyncYT:
         async with _downloader_lock:
             if _downloader is None:
                 downloader = AsyncYT(bin_dir=BACKEND_DIR / "bin")
-                await downloader.setup_binaries()
+                missing = [
+                    path.name
+                    for path in (
+                        downloader.ytdlp_path,
+                        downloader.ffmpeg_path,
+                        downloader.ffprobe_path,
+                        downloader.node_path,
+                    )
+                    if not path.exists()
+                ]
+                if missing:
+                    raise RuntimeError(
+                        "Media binaries must be installed at image build time; "
+                        f"missing: {', '.join(missing)}"
+                    )
                 _downloader = downloader
     return _downloader
 

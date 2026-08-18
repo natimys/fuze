@@ -12,6 +12,7 @@ src/frontend/.env.local
 src/frontend/node_modules
 src/frontend/.next
 src/backend/integrations/yt_data.json
+src/backend/bin
 src/backend/Dockerfile
 docker-compose.yml
 README.md
