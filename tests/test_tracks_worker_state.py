@@ -66,3 +66,25 @@ async def test_expired_final_attempt_becomes_failed(test_engine, clean_tables):
         await session.refresh(claimed)
         assert claimed.download_status == TrackDownloadStatus.FAILED
         assert claimed.download_error_code == "max_attempts_exhausted"
+
+
+@pytest.mark.asyncio
+async def test_manual_acquire_restarts_exhausted_retry_budget(test_engine, clean_tables):
+    async with AsyncSession(bind=test_engine, expire_on_commit=False) as session:
+        repository = TrackRepository(session)
+        track = await _queued_track(session, attempts=3)
+        track.download_status = TrackDownloadStatus.FAILED
+        track.download_error_code = "download_failed"
+        track.download_error_message = "Download failed: YtdlpDownloadError"
+        await session.commit()
+
+        queued, should_enqueue = await repository.queue_existing(
+            TrackSource.YOUTUBE, track.source_id, max_attempts=3
+        )
+
+        assert should_enqueue
+        assert queued is not None
+        assert queued.download_status == TrackDownloadStatus.QUEUED
+        assert queued.download_attempts == 0
+        assert queued.download_error_code is None
+        assert queued.download_error_message is None

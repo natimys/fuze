@@ -3,7 +3,7 @@ from pathlib import Path
 
 from asyncyt import AsyncYT, DownloadConfig, VideoInfo
 from asyncyt.encoding import AudioEncodingConfig, EncodingConfig
-from asyncyt.enums import AudioCodec, Quality
+from asyncyt.enums import AudioCodec, AudioFormat, Quality
 
 from core.settings import BACKEND_DIR
 
@@ -51,10 +51,20 @@ async def download_audio_to_file(url: str, dest_dir: Path) -> Path:
         output_path=str(dest_dir),
         quality=Quality.AUDIO_ONLY,
         extract_audio=True,
+        audio_format=AudioFormat.OPUS,
         encoding=encode_config,
+        custom_options={
+            # YouTube now requires its player challenge to be evaluated by a
+            # supported JavaScript runtime. AsyncYT discovers Node, but does
+            # not pass it to the download command on its own.
+            "js_runtimes": f"node:{yt.node_path}",
+            # The current yt-dlp default selects android_vr for this workload;
+            # its Google Video URL is rejected with HTTP 403. The regular
+            # Android client exposes a downloadable fallback format.
+            "extractor_args": "youtube:player_client=android",
+        },
     )
-    info = await yt.get_video_info(url)
-    filename = await yt.download(info.url, config=config)
+    filename = await yt.download(url, config=config)
     return filename
 
 

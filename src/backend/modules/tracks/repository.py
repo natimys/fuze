@@ -86,9 +86,12 @@ class TrackRepository:
         track = result.scalar_one()
         should_enqueue = track.download_status == TrackDownloadStatus.NOT_REQUESTED or (
             track.download_status == TrackDownloadStatus.FAILED
-            and track.download_attempts < max_attempts
         )
         if should_enqueue:
+            if track.download_attempts >= max_attempts:
+                # A user-initiated acquire starts a fresh retry budget. Celery's
+                # automatic retries still use prepare_retry() and remain capped.
+                track.download_attempts = 0
             track.download_status = TrackDownloadStatus.QUEUED
             track.download_requested_at = datetime.now(UTC).replace(tzinfo=None)
             track.download_started_at = None
@@ -114,9 +117,10 @@ class TrackRepository:
             return None, False
         should_enqueue = track.download_status == TrackDownloadStatus.NOT_REQUESTED or (
             track.download_status == TrackDownloadStatus.FAILED
-            and track.download_attempts < max_attempts
         )
         if should_enqueue:
+            if track.download_attempts >= max_attempts:
+                track.download_attempts = 0
             track.download_status = TrackDownloadStatus.QUEUED
             track.download_requested_at = datetime.now(UTC).replace(tzinfo=None)
             track.download_started_at = None
