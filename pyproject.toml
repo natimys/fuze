@@ -11,6 +11,7 @@ dependencies = [
     "asyncyt==2.1.4",
     "authx==1.7.0",
     "celery[redis]>=5.5.0,<6",
+    "cryptography>=46.0.0",
     "fastapi>=0.136.1",
     "httpx==0.28.1",
     "jinja2>=3.1.0",
@@ -29,11 +30,11 @@ dependencies = [
     "aiofiles>=24.0.0",
     "redis>=5.0.0",
     "yandex-music[async]>=3.0.0",
-    "yt-dlp==2026.6.9",
+    "yt-dlp[default]==2026.7.4",
 ]
 
 [project.scripts]
-project = "cli.main:app"
+fuze = "cli.main:app"
 
 [build-system]
 requires = ["setuptools>=64"]

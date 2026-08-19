@@ -1,4 +1,7 @@
 [auth]
+# password: вход по email и паролю
+# key: только вход по ключу; registration должна быть false
+# both: доступны оба способа входа
 mode = "password"
 registration = true
 

@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .models import User
@@ -19,13 +19,20 @@ class UserRepository:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
-    async def get_users(self, skip: int = 0, limit: int = 10) -> list[User]:
-        query = select(User).order_by(User.id).offset(skip).limit(limit)
+    async def get_users(self, skip: int = 0, limit: int = 10, search: str = "") -> list[User]:
+        query = select(User)
+        if search:
+            pattern = f"%{search}%"
+            query = query.where(or_(User.name.ilike(pattern), User.email.ilike(pattern)))
+        query = query.order_by(User.id).offset(skip).limit(limit)
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
-    async def count_users(self) -> int:
+    async def count_users(self, search: str = "") -> int:
         query = select(func.count(User.id))
+        if search:
+            pattern = f"%{search}%"
+            query = query.where(or_(User.name.ilike(pattern), User.email.ilike(pattern)))
         result = await self.db.execute(query)
         return result.scalar_one()
 

@@ -27,9 +27,10 @@ async def _with_repository(operation: Callable[..., Awaitable[T]], *args) -> T:
 async def _process(repository, track_id: int, task_id: str) -> bool:
     from integrations.storage import ensure_bucket
     from modules.tracks.service import TrackDownloadProcessor
+    from modules.admin.service import ConfigService
 
     await ensure_bucket()
-    return await TrackDownloadProcessor(repository).process(track_id, task_id)
+    return await TrackDownloadProcessor(repository, ConfigService(repository.db)).process(track_id, task_id)
 
 
 async def _prepare_retry(repository, track_id: int) -> bool:
@@ -39,9 +40,9 @@ async def _prepare_retry(repository, track_id: int) -> bool:
 
 
 async def _recover(repository) -> list[int]:
-    from core.instance_config import get_fuze_config
+    from modules.admin.service import ConfigService
 
-    if not get_fuze_config().features.playback:
+    if not (await ConfigService(repository.db).get_snapshot()).config.features.playback:
         await repository.fail_queued_playback_disabled()
         return []
     return await repository.requeue_stale(max_attempts=settings.CELERY_TASK_MAX_RETRIES)

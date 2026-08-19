@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     REDIS_CONNECT_TIMEOUT_SECONDS: float = 2.0
     REDIS_SOCKET_TIMEOUT_SECONDS: float = 2.0
     JWT_SECURITY_KEY: SecretStr
+    CONFIG_ENCRYPTION_KEY: SecretStr | None = None
+    CONFIG_ENCRYPTION_KEY_FILE: Path | None = None
 
     CORS_ORIGINS: list[str]
     CORS_ALLOW_CREDENTIALS: bool
@@ -141,6 +143,23 @@ class Settings(BaseSettings):
     def ALEMBIC_DATABASE_URL(self) -> str:
         return f"postgresql+psycopg://{self.DB_USER}:{self.DB_PASSWORD.get_secret_value()}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
 
+    @property
+    def EFFECTIVE_CONFIG_ENCRYPTION_KEY(self) -> str:
+        if self.CONFIG_ENCRYPTION_KEY_FILE is not None:
+            try:
+                value = self.CONFIG_ENCRYPTION_KEY_FILE.read_text(encoding="utf-8").strip()
+            except OSError as exc:
+                raise ValueError("CONFIG_ENCRYPTION_KEY_FILE cannot be read") from exc
+        elif self.CONFIG_ENCRYPTION_KEY is not None:
+            value = self.CONFIG_ENCRYPTION_KEY.get_secret_value().strip()
+        elif self.ENVIRONMENT != "production":
+            value = "development-only-config-key-change-me"
+        else:
+            raise ValueError("CONFIG_ENCRYPTION_KEY or CONFIG_ENCRYPTION_KEY_FILE is required")
+        if len(value) < 32:
+            raise ValueError("Config encryption key must contain at least 32 characters")
+        return value
+
 
 class TestSettings(BaseSettings):
     TEST_DATABASE_URL: str
@@ -197,9 +216,4 @@ def validate_fuze_credentials(settings: Settings, config) -> None:
 
 @lru_cache
 def get_settings():
-    settings = Settings()
-    from core.instance_config import get_fuze_config
-
-    config = get_fuze_config()
-    validate_fuze_credentials(settings, config)
-    return settings
+    return Settings()

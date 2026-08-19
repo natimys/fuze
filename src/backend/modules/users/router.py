@@ -18,9 +18,10 @@ router = APIRouter(
 async def list_users(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=10, ge=1, le=100),
+    search: str = Query(default="", max_length=100),
     user_service: UserService = Depends(get_user_service),
 ):
-    users, total = await user_service.list_users(page=page, size=size)
+    users, total = await user_service.list_users(page=page, size=size, search=search)
     return UsersResponse(data=users, total=total, page=page, size=size)
 
 

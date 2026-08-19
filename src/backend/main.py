@@ -13,7 +13,6 @@ from loguru import logger
 from sqlalchemy import text
 
 from core.exceptions import AppException
-from core.instance_config import get_fuze_config
 from core.modules import register_modules
 from core.security import jwt_security
 from core.settings import get_settings
@@ -21,6 +20,7 @@ from database.engine import create_engine_and_sessionmaker
 from integrations import close_integrations
 from integrations.cache import get_redis
 from integrations.storage import ensure_bucket, storage_ready
+from modules.admin.service import ConfigService, setup_required
 
 try:
     __version__ = version("fuze")
@@ -74,8 +74,14 @@ register_modules(app, prefix=settings.API_PREFIX)
 
 @app.get(f"{settings.API_PREFIX}/config", tags=["config"])
 async def public_config():
-    config = get_fuze_config()
+    async with app.state.session_maker() as session:
+        service = ConfigService(session)
+        snapshot = await service.get_snapshot()
+        config = snapshot.config
+        needs_setup = await setup_required(session)
     return {
+        "instance_name": config.instance_name,
+        "setup_required": needs_setup,
         "auth": {
             "mode": config.auth.mode,
             "registration": config.auth.registration,

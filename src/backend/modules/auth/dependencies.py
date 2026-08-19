@@ -6,6 +6,7 @@ from modules.auth.repository import AuthSessionRepository
 from modules.auth.service import AuthService
 from modules.users.repository import UserRepository
 from modules.users.service import UserService
+from modules.admin.service import ConfigService
 
 
 def get_auth_service(
@@ -14,4 +15,5 @@ def get_auth_service(
     return AuthService(
         UserService(UserRepository(db)),
         AuthSessionRepository(db),
+        ConfigService(db),
     )

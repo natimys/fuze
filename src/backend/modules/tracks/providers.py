@@ -4,6 +4,7 @@ import re
 import time
 from dataclasses import asdict, dataclass
 from typing import Literal, Protocol
+from core.instance_config import FuzeConfig
 from urllib.parse import quote_plus, urlparse, parse_qs
 
 from core.settings import get_settings
@@ -48,8 +49,8 @@ class ProviderResult:
 class SearchProvider(Protocol):
     source: str
 
-    async def search(self, query: str) -> list[SearchItem]: ...
-    async def get(self, source_id: str) -> SearchItem: ...
+    async def search(self, query: str, secrets: dict[str, str] | None = None) -> list[SearchItem]: ...
+    async def get(self, source_id: str, secrets: dict[str, str] | None = None) -> SearchItem: ...
 
 
 def youtube_id(value: str) -> str:
@@ -67,7 +68,7 @@ def youtube_id(value: str) -> str:
 class YandexProvider:
     source = "yandex"
 
-    async def search(self, query: str) -> list[SearchItem]:
+    async def search(self, query: str, secrets: dict[str, str] | None = None) -> list[SearchItem]:
         return [
             SearchItem(
                 source_id=x.track_id,
@@ -78,13 +79,13 @@ class YandexProvider:
                 duration_ms=x.duration_ms,
                 cover_url=x.cover_url,
             )
-            for x in await search_yandex(query)
+            for x in await search_yandex(query, token=(secrets or {}).get("yandex_token"))
         ]
 
-    async def get(self, source_id: str) -> SearchItem:
+    async def get(self, source_id: str, secrets: dict[str, str] | None = None) -> SearchItem:
         if not re.fullmatch(r"[A-Za-z0-9:_-]{1,128}", source_id):
             raise InvalidTrackSource("invalid_yandex_track_id")
-        client = await get_yandex_client()
+        client = await get_yandex_client(token=(secrets or {}).get("yandex_token"))
         tracks = await client.tracks([source_id])
         if not tracks:
             raise ValueError("Yandex track not found")
@@ -117,10 +118,10 @@ class YouTubeProvider:
             external_url=f"https://www.youtube.com/watch?v={source_id}",
         )
 
-    async def search(self, query: str) -> list[SearchItem]:
+    async def search(self, query: str, secrets: dict[str, str] | None = None) -> list[SearchItem]:
         return [self._item(x) for x in await search_youtube(query, max_results=10)]
 
-    async def get(self, source_id: str) -> SearchItem:
+    async def get(self, source_id: str, secrets: dict[str, str] | None = None) -> SearchItem:
         source_id = youtube_id(source_id)
         if not source_id:
             raise InvalidTrackSource("invalid_youtube_video_id")
@@ -131,22 +132,28 @@ class YouTubeProvider:
 class SpotifyProvider:
     source = "spotify"
 
-    async def search(self, query: str) -> list[SearchItem]:
-        config = get_fuze_config()
-        if not config.providers.spotify:
-            raise SpotifyDisabled("Spotify API is disabled")
+    async def search(self, query: str, secrets: dict[str, str] | None = None) -> list[SearchItem]:
+        credentials = secrets or {}
         return [
             SearchItem(**x)
-            for x in await spotify_client.search(query, config.providers.spotify_market)
+            for x in await spotify_client.search(
+                query,
+                credentials.get("spotify_market", "US"),
+                credentials.get("spotify_client_id", ""),
+                credentials.get("spotify_client_secret", ""),
+            )
         ]
 
-    async def get(self, source_id: str) -> SearchItem:
-        config = get_fuze_config()
-        if not config.providers.spotify:
-            raise SpotifyDisabled("Spotify API is disabled")
+    async def get(self, source_id: str, secrets: dict[str, str] | None = None) -> SearchItem:
+        credentials = secrets or {}
         if not re.fullmatch(r"[A-Za-z0-9]{22}", source_id):
             raise ValueError("Invalid Spotify track ID")
-        item = await spotify_client.get_track(source_id, config.providers.spotify_market)
+        item = await spotify_client.get_track(
+            source_id,
+            credentials.get("spotify_market", "US"),
+            credentials.get("spotify_client_id", ""),
+            credentials.get("spotify_client_secret", ""),
+        )
         return SearchItem(**item)
 
 
@@ -156,9 +163,14 @@ def cache_key(source: str, query: str, market: str) -> str:
     return f"track_search:v2:{source}:{market}:{digest}"
 
 
-async def search_cached(provider: SearchProvider, query: str) -> ProviderResult:
+async def search_cached(
+    provider: SearchProvider,
+    query: str,
+    config: FuzeConfig | None = None,
+    secrets: dict[str, str] | None = None,
+) -> ProviderResult:
     settings = get_settings()
-    providers = get_fuze_config().providers
+    providers = (config or get_fuze_config()).providers
     market = providers.spotify_market if provider.source == "spotify" else "-"
     key = cache_key(provider.source, query, market)
     try:
@@ -197,7 +209,8 @@ async def search_cached(provider: SearchProvider, query: str) -> ProviderResult:
     started = time.monotonic()
     try:
         items = await asyncio.wait_for(
-            provider.search(query), settings.TRACK_PROVIDER_TIMEOUT_SECONDS
+            provider.search(query, secrets) if secrets is not None else provider.search(query),
+            settings.TRACK_PROVIDER_TIMEOUT_SECONDS,
         )
         ttl = settings.TRACK_SEARCH_CACHE_TTL_SECONDS if items else 120
         try:

@@ -10,7 +10,7 @@ class AuthConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mode: Literal["password", "key", "both"] = "password"
-    registration: bool = True
+    registration: bool = False
 
     @model_validator(mode="after")
     def registration_requires_password_login(self):
@@ -45,9 +45,18 @@ class ProvidersConfig(BaseModel):
 class FuzeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    auth: AuthConfig
-    features: FeaturesConfig
-    providers: ProvidersConfig
+    instance_name: str = "Fuze"
+    auth: AuthConfig = AuthConfig()
+    features: FeaturesConfig = FeaturesConfig()
+    providers: ProvidersConfig = ProvidersConfig()
+
+    @field_validator("instance_name", mode="before")
+    @classmethod
+    def normalize_instance_name(cls, value: str) -> str:
+        value = value.strip()
+        if not 1 <= len(value) <= 100:
+            raise ValueError("must contain between 1 and 100 characters")
+        return value
 
 
 def load_fuze_config(path: Path) -> FuzeConfig:

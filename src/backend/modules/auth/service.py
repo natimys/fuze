@@ -14,6 +14,9 @@ from modules.auth.repository import AuthSessionRepository
 from modules.auth.schemas import KeyLogin, UserLogin, UserRegister
 from modules.users.models import User
 from modules.users.service import UserService
+from modules.admin.service import ConfigService
+
+_default_get_fuze_config = get_fuze_config
 
 
 class AuthService:
@@ -21,9 +24,20 @@ class AuthService:
         self,
         user_service: UserService,
         session_repository: AuthSessionRepository,
+        config_service: ConfigService | None = None,
     ):
         self.user_service = user_service
         self.session_repository = session_repository
+        self.config_service = config_service
+
+    async def _config(self):
+        # Preserve explicit dependency substitution used by focused unit tests and
+        # embedders while production instances always use ConfigService.
+        if get_fuze_config is not _default_get_fuze_config:
+            return get_fuze_config()
+        if self.config_service is not None:
+            return (await self.config_service.get_snapshot()).config
+        return get_fuze_config()
 
     def generate_tokens(
         self,
@@ -42,7 +56,7 @@ class AuthService:
         return access_token, refresh_token
 
     async def register(self, data: UserRegister) -> User:
-        config = get_fuze_config()
+        config = await self._config()
         if not config.auth.registration:
             raise CapabilityDisabled("registration_disabled")
         user = await self.user_service.register(
@@ -51,7 +65,7 @@ class AuthService:
         return user
 
     async def authenticate(self, data: UserLogin) -> tuple[User, str, str]:
-        if get_fuze_config().auth.mode not in {"password", "both"}:
+        if (await self._config()).auth.mode not in {"password", "both"}:
             raise CapabilityDisabled("password_login_disabled")
         user = await self.user_service.get_user_by_email(data.email)
 
@@ -68,7 +82,7 @@ class AuthService:
         return user, access_token, refresh_token
 
     async def authenticate_key(self, data: KeyLogin) -> tuple[User, str, str]:
-        if get_fuze_config().auth.mode not in {"key", "both"}:
+        if (await self._config()).auth.mode not in {"key", "both"}:
             raise CapabilityDisabled("key_login_disabled")
         key_hash = sha256(data.key.get_secret_value().encode("utf-8")).hexdigest()
         key = await self.session_repository.get_access_key_for_update(key_hash)

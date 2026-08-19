@@ -20,10 +20,15 @@ class UserService:
     async def get_user_by_email(self, email: str) -> User | None:
         return await self.repository.get_user_by_email(self._normalize_email(email))
 
-    async def list_users(self, page: int = 1, size: int = 10) -> tuple[list[User], int]:
+    async def list_users(self, page: int = 1, size: int = 10, search: str = "") -> tuple[list[User], int]:
         skip = (page - 1) * size
-        users = await self.repository.get_users(skip=skip, limit=size)
-        total = await self.repository.count_users()
+        search = search.strip()[:100]
+        if search:
+            users = await self.repository.get_users(skip=skip, limit=size, search=search)
+            total = await self.repository.count_users(search=search)
+        else:
+            users = await self.repository.get_users(skip=skip, limit=size)
+            total = await self.repository.count_users()
         return users, total
 
     async def register(self, email: str, name: str, password: str) -> User:

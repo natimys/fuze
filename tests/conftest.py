@@ -5,6 +5,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from core.settings import TestSettings
@@ -18,6 +19,11 @@ os.environ["SEARCH_RATE_LIMIT_REQUESTS"] = "0"
 os.environ["ACQUIRE_RATE_LIMIT_REQUESTS"] = "0"
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+TEST_INSTANCE_SETTINGS = (
+    '{"instance_name":"Fuze","auth":{"mode":"password","registration":true},'
+    '"features":{"playback":true},"providers":{"youtube":true,"yandex":false,'
+    '"spotify":false,"spotify_market":"US"}}'
+)
 
 
 @pytest.fixture(scope="session")
@@ -31,6 +37,20 @@ async def test_engine(test_settings: TestSettings):
     config.set_main_option("sqlalchemy.url", test_settings.TEST_ALEMBIC_DATABASE_URL)
     command.upgrade(config, "head")
     engine = create_async_engine(test_settings.TEST_DATABASE_URL, echo=False)
+    # Product defaults disable public registration. Most legacy auth tests
+    # exercise the registration flow itself, so this fixture explicitly enables
+    # that capability for their isolated database.
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "INSERT INTO instance_settings (id, version, settings) VALUES "
+                "(1, 1, CAST(:settings AS jsonb)) ON CONFLICT (id) DO UPDATE SET "
+                "settings = jsonb_set(instance_settings.settings, '{auth,registration}', 'true'::jsonb)"
+            ),
+            {
+                "settings": TEST_INSTANCE_SETTINGS
+            },
+        )
     yield engine
     await engine.dispose()
 
@@ -40,7 +60,16 @@ async def clean_tables(test_engine):
     yield
     async with test_engine.begin() as conn:
         for table in reversed(Base.metadata.sorted_tables):
+            if table.name == "instance_settings":
+                continue
             await conn.execute(table.delete())
+        await conn.execute(
+            text("UPDATE instance_settings SET version=1, settings=CAST(:settings AS jsonb), updated_by=NULL"),
+            {"settings": TEST_INSTANCE_SETTINGS},
+        )
+    from modules.admin.service import invalidate_config_cache
+
+    invalidate_config_cache()
 
 
 @pytest.fixture

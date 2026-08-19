@@ -3,6 +3,7 @@ import re
 import tempfile
 import unicodedata
 import uuid
+import inspect
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -12,6 +13,7 @@ from integrations.storage import get_presigned_url, upload_file
 from integrations.youtube import download_audio_to_file, search_youtube
 from core.settings import get_settings
 from core.instance_config import get_fuze_config
+from modules.admin.service import ConfigService, ConfigSnapshot
 from loguru import logger
 
 from .errors import (
@@ -33,6 +35,8 @@ from .providers import (
     youtube_id,
 )
 from .repository import TrackRepository
+
+_default_search_cached = search_cached
 
 
 @dataclass(frozen=True)
@@ -67,16 +71,37 @@ def _validate_item(item: SearchItem) -> None:
 
 
 class TracksService:
-    def __init__(self, repository: TrackRepository, *, enforce_config: bool = False):
+    def __init__(
+        self,
+        repository: TrackRepository,
+        *,
+        enforce_config: bool = False,
+        config_service: ConfigService | None = None,
+    ):
         self.repository = repository
         self.enforce_config = enforce_config
+        self.config_service = config_service
+
+    async def _snapshot(self) -> ConfigSnapshot:
+        if self.config_service is not None:
+            return await self.config_service.get_snapshot()
+        return ConfigSnapshot(version=0, config=get_fuze_config(), secrets={})
 
     async def search(self, query: str) -> dict:
         names = ("yandex", "spotify", "youtube")
-        config = get_fuze_config()
+        snapshot = await self._snapshot()
+        config = snapshot.config
+        provider_secrets = {
+            **snapshot.secrets,
+            "spotify_market": config.providers.spotify_market,
+        }
         responses = await asyncio.gather(
             *(
-                search_cached(PROVIDERS[name], query)
+                (
+                    search_cached(PROVIDERS[name], query, config, provider_secrets)
+                    if self.config_service is not None and search_cached is _default_search_cached
+                    else search_cached(PROVIDERS[name], query)
+                )
                 if not self.enforce_config or getattr(config.providers, name)
                 else asyncio.sleep(0, result=ProviderResult([], status="disabled"))
                 for name in names
@@ -133,7 +158,8 @@ class TracksService:
         }
 
     async def acquire(self, source: str, source_id: str) -> AcquireResult:
-        config = get_fuze_config()
+        snapshot = await self._snapshot()
+        config = snapshot.config
         if not config.features.playback:
             raise TrackCapabilityDisabled("playback_disabled")
         if source == TrackSource.SPOTIFY.value:
@@ -164,7 +190,12 @@ class TracksService:
                 )
             return AcquireResult(track=existing, newly_queued=should_enqueue)
         try:
-            item = await provider.get(canonical_id)
+            provider_secrets = {
+                **snapshot.secrets,
+                "spotify_market": config.providers.spotify_market,
+            }
+            accepts_secrets = len(inspect.signature(provider.get).parameters) >= 2
+            item = await provider.get(canonical_id, provider_secrets) if self.config_service is not None and accepts_secrets else await provider.get(canonical_id)
         except InvalidTrackSource:
             raise
         except ValueError as exc:
@@ -214,7 +245,7 @@ class TracksService:
         return track
 
     async def get_stream_url(self, track_id: int) -> str:
-        if self.enforce_config and not get_fuze_config().features.playback:
+        if self.enforce_config and not (await self._snapshot()).config.features.playback:
             raise TrackCapabilityDisabled("playback_disabled")
         track = await self.get_track(track_id)
         if track.download_status != TrackDownloadStatus.READY or not track.storage_key:
@@ -230,11 +261,17 @@ class TracksService:
 class TrackDownloadProcessor:
     """Worker-only media pipeline; API requests never call this class."""
 
-    def __init__(self, repository: TrackRepository):
+    def __init__(self, repository: TrackRepository, config_service: ConfigService | None = None):
         self.repository = repository
+        self.config_service = config_service
 
     async def process(self, track_id: int, task_id: str) -> bool:
-        if not get_fuze_config().features.playback:
+        config = (
+            (await self.config_service.get_snapshot()).config
+            if self.config_service is not None
+            else get_fuze_config()
+        )
+        if not config.features.playback:
             await self.repository.mark_queued_failed(
                 track_id, "playback_disabled", "Playback is disabled"
             )
