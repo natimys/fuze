@@ -1,13 +1,52 @@
+# Local environment and instance configuration
 .env
-.env.test
-.env.media
+.env.*
+!.env.example
+!.env.*.example
+/config/fuze.toml
+
+# Python environments, caches, coverage, and build output
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Frontend dependencies and generated output
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+next-env.d.ts
+
+# Downloaded media tooling and local integration state
+/src/backend/bin/
+/src/backend/integrations/yt_data.json
+
+# IDE and local agent state
+.idea/
+/.mimocode/
+/.agents/skills/
+/skills/
+/skills-lock.json
+/src/frontend/CLAUDE.md
+
+# Reports, temporary files, and editor backups
 artifacts/
 *~
 .*.un~
-src/frontend/.env.local
-src/backend/integrations/yt_data.json
-.venv
-__pycache__
-/.mimocode/
-Fuze.egg-info
-bin
+.DS_Store
+Thumbs.db
+
+# Local certificates and private keys
+*.pem
