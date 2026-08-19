@@ -39,6 +39,11 @@ async def _prepare_retry(repository, track_id: int) -> bool:
 
 
 async def _recover(repository) -> list[int]:
+    from core.instance_config import get_fuze_config
+
+    if not get_fuze_config().features.playback:
+        await repository.fail_queued_playback_disabled()
+        return []
     return await repository.requeue_stale(max_attempts=settings.CELERY_TASK_MAX_RETRIES)
 
 

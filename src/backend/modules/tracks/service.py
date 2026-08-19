@@ -11,12 +11,14 @@ from integrations.cache import cache_get, cache_set
 from integrations.storage import get_presigned_url, upload_file
 from integrations.youtube import download_audio_to_file, search_youtube
 from core.settings import get_settings
+from core.instance_config import get_fuze_config
 from loguru import logger
 
 from .errors import (
     AmbiguousTrackMatch,
     InvalidTrackSource,
     TrackDependencyUnavailable,
+    TrackCapabilityDisabled,
     TrackNotFound,
     TrackNotReady,
     TrackStateConflict,
@@ -24,6 +26,7 @@ from .errors import (
 from .models import Track, TrackDownloadStatus, TrackSource
 from .providers import (
     PROVIDERS,
+    ProviderResult,
     SearchItem,
     search_cached,
     spotify_search_url,
@@ -64,13 +67,20 @@ def _validate_item(item: SearchItem) -> None:
 
 
 class TracksService:
-    def __init__(self, repository: TrackRepository):
+    def __init__(self, repository: TrackRepository, *, enforce_config: bool = False):
         self.repository = repository
+        self.enforce_config = enforce_config
 
     async def search(self, query: str) -> dict:
         names = ("yandex", "spotify", "youtube")
+        config = get_fuze_config()
         responses = await asyncio.gather(
-            *(search_cached(PROVIDERS[name], query) for name in names)
+            *(
+                search_cached(PROVIDERS[name], query)
+                if not self.enforce_config or getattr(config.providers, name)
+                else asyncio.sleep(0, result=ProviderResult([], status="disabled"))
+                for name in names
+            )
         )
         provider_results = dict(zip(names, responses, strict=True))
         items_by_provider = {
@@ -93,7 +103,11 @@ class TracksService:
                         "key": f"{name}:{item.source_id}",
                         "track_id": track.id if track else None,
                         "source": name,
-                        "capability": "external" if name == "spotify" else "acquire",
+                        "capability": (
+                            "catalog"
+                            if not config.features.playback
+                            else "external" if name == "spotify" else "acquire"
+                        ),
                         "availability": status,
                         **item.__dict__,
                         "already_downloaded": bool(
@@ -113,12 +127,21 @@ class TracksService:
                 name: {"status": result.status, "cached": result.cached}
                 for name, result in provider_results.items()
             },
-            "spotify_search_url": spotify_search_url(query),
+            "spotify_search_url": (
+                spotify_search_url(query) if config.providers.spotify else None
+            ),
         }
 
     async def acquire(self, source: str, source_id: str) -> AcquireResult:
+        config = get_fuze_config()
+        if not config.features.playback:
+            raise TrackCapabilityDisabled("playback_disabled")
         if source == TrackSource.SPOTIFY.value:
             raise InvalidTrackSource("spotify_is_external_only")
+        if self.enforce_config and source in {"youtube", "yandex", "spotify"} and not getattr(
+            config.providers, source
+        ):
+            raise TrackCapabilityDisabled("provider_disabled")
         provider = PROVIDERS.get(source)
         if provider is None:
             raise InvalidTrackSource("unsupported_source")
@@ -191,6 +214,8 @@ class TracksService:
         return track
 
     async def get_stream_url(self, track_id: int) -> str:
+        if self.enforce_config and not get_fuze_config().features.playback:
+            raise TrackCapabilityDisabled("playback_disabled")
         track = await self.get_track(track_id)
         if track.download_status != TrackDownloadStatus.READY or not track.storage_key:
             raise TrackNotReady(
@@ -209,6 +234,11 @@ class TrackDownloadProcessor:
         self.repository = repository
 
     async def process(self, track_id: int, task_id: str) -> bool:
+        if not get_fuze_config().features.playback:
+            await self.repository.mark_queued_failed(
+                track_id, "playback_disabled", "Playback is disabled"
+            )
+            return False
         track = await self.repository.claim_download(
             track_id,
             task_id,

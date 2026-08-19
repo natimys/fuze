@@ -35,3 +35,8 @@ class AmbiguousTrackMatch(TrackDomainError):
 class TrackDependencyUnavailable(TrackDomainError):
     status_code = 503
     code = "track_dependency_unavailable"
+
+
+class TrackCapabilityDisabled(TrackDomainError):
+    status_code = 403
+    code = "capability_disabled"

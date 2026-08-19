@@ -155,6 +155,40 @@ class TrackRepository:
         )
         await self.db.commit()
 
+    async def mark_queued_failed(self, track_id: int, code: str, message: str) -> None:
+        await self.db.execute(
+            update(Track)
+            .where(
+                Track.id == track_id,
+                Track.download_status == TrackDownloadStatus.QUEUED,
+            )
+            .values(
+                download_status=TrackDownloadStatus.FAILED,
+                download_error_code=code[:64],
+                download_error_message=message[:512],
+                download_finished_at=datetime.now(UTC).replace(tzinfo=None),
+                download_lease_expires_at=None,
+            )
+        )
+        await self.db.commit()
+
+    async def fail_queued_playback_disabled(self) -> int:
+        result = await self.db.execute(
+            update(Track)
+            .where(Track.download_status == TrackDownloadStatus.QUEUED)
+            .values(
+                download_status=TrackDownloadStatus.FAILED,
+                download_error_code="playback_disabled",
+                download_error_message="Playback is disabled",
+                download_finished_at=datetime.now(UTC).replace(tzinfo=None),
+                download_lease_expires_at=None,
+            )
+            .returning(Track.id)
+        )
+        count = len(result.scalars().all())
+        await self.db.commit()
+        return count
+
     async def claim_download(
         self, track_id: int, task_id: str, lease_seconds: int
     ) -> Track | None:

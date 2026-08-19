@@ -10,7 +10,7 @@ class TrackSearchResult(BaseModel):
     key: str
     track_id: int | None = None
     source: Literal["yandex", "youtube", "spotify"]
-    capability: Literal["acquire", "external"]
+    capability: Literal["acquire", "external", "catalog"]
     availability: Literal["remote", "queued", "downloading", "ready", "failed"]
     source_id: str
     title: str
@@ -32,7 +32,7 @@ class TrackSearchResponse(BaseModel):
     data: list[TrackSearchResult]
     query: str
     providers: dict[str, ProviderState]
-    spotify_search_url: str
+    spotify_search_url: str | None = None
 
 
 class TrackAcquireRequest(BaseModel):

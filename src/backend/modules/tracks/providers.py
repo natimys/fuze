@@ -7,6 +7,7 @@ from typing import Literal, Protocol
 from urllib.parse import quote_plus, urlparse, parse_qs
 
 from core.settings import get_settings
+from core.instance_config import get_fuze_config
 from integrations.cache import (
     cache_acquire_lock,
     cache_get,
@@ -131,21 +132,21 @@ class SpotifyProvider:
     source = "spotify"
 
     async def search(self, query: str) -> list[SearchItem]:
-        settings = get_settings()
-        if not settings.SPOTIFY_ENABLED:
+        config = get_fuze_config()
+        if not config.providers.spotify:
             raise SpotifyDisabled("Spotify API is disabled")
         return [
             SearchItem(**x)
-            for x in await spotify_client.search(query, settings.SPOTIFY_MARKET)
+            for x in await spotify_client.search(query, config.providers.spotify_market)
         ]
 
     async def get(self, source_id: str) -> SearchItem:
-        settings = get_settings()
-        if not settings.SPOTIFY_ENABLED:
+        config = get_fuze_config()
+        if not config.providers.spotify:
             raise SpotifyDisabled("Spotify API is disabled")
         if not re.fullmatch(r"[A-Za-z0-9]{22}", source_id):
             raise ValueError("Invalid Spotify track ID")
-        item = await spotify_client.get_track(source_id, settings.SPOTIFY_MARKET)
+        item = await spotify_client.get_track(source_id, config.providers.spotify_market)
         return SearchItem(**item)
 
 
@@ -157,9 +158,8 @@ def cache_key(source: str, query: str, market: str) -> str:
 
 async def search_cached(provider: SearchProvider, query: str) -> ProviderResult:
     settings = get_settings()
-    if provider.source == "spotify" and not settings.SPOTIFY_ENABLED:
-        return ProviderResult([], status="disabled")
-    market = settings.SPOTIFY_MARKET if provider.source == "spotify" else "-"
+    providers = get_fuze_config().providers
+    market = providers.spotify_market if provider.source == "spotify" else "-"
     key = cache_key(provider.source, query, market)
     try:
         cached = await cache_get(key)
