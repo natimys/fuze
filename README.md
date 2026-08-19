@@ -80,6 +80,41 @@ Linux:
 project env init
 ```
 
+Instance behavior is configured in `config/fuze.toml`; changes take effect after
+restarting backend, worker, and beat. This file is the only source of truth for
+auth mode, registration, playback, enabled providers, and Spotify market:
+
+```toml
+[auth]
+mode = "password" # password | key | both
+registration = true
+
+[features]
+playback = true
+
+[providers]
+youtube = true
+yandex = false
+spotify = false
+spotify_market = "US"
+```
+
+Keep only provider credentials in `.env`. Enabling Yandex or Spotify without
+the matching token/client credentials makes startup fail with a configuration
+error.
+
+Key-only users and reusable access keys are managed from the CLI:
+
+```bash
+project users create-key-user "Display name" --label initial
+project users issue-key USER_ID --label laptop
+project users list-keys USER_ID
+project users revoke-key KEY_ID
+```
+
+Issued secrets are displayed once. Revoking a key immediately revokes every
+active session created with it.
+
 ### Configuration
 
 Edit `.env` and set the required values:
