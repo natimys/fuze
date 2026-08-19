@@ -29,10 +29,14 @@ class UserLogin(BaseModel):
         return value.strip().lower()
 
 
+class KeyLogin(BaseModel):
+    key: SecretStr = Field(min_length=32, max_length=512)
+
+
 class UserPublic(BaseModel):
     id: int
     name: str
-    email: EmailStr
+    email: EmailStr | None
     role: UserRole
     is_active: bool
 

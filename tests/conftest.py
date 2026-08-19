@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from core.settings import TestSettings
 from database.base import Base
 from database.dependencies import get_db
+
+os.environ.setdefault("AUTH_RATE_LIMIT_REQUESTS", "1000")
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 

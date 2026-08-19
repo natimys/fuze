@@ -3,12 +3,16 @@ from fastapi import APIRouter, Depends, Response, status
 
 from core.dependencies import current_active_user
 from core.rate_limit import auth_rate_limit
-from core.security import jwt_security
+from core.security import (
+    jwt_security,
+    refresh_token_required,
+    unset_legacy_refresh_cookie,
+)
 from .dependencies import (
     get_auth_service,
 )
 from .module import module
-from .schemas import UserPublic, UserRegister, UserLogin
+from .schemas import KeyLogin, UserPublic, UserRegister, UserLogin
 from .service import AuthService
 from ..users.models import User
 
@@ -35,11 +39,12 @@ async def me(
 @router.post("/refresh", status_code=status.HTTP_204_NO_CONTENT)
 async def refresh(
     response: Response,
-    payload: TokenPayload = Depends(jwt_security.refresh_token_required),
+    payload: TokenPayload = Depends(refresh_token_required),
     auth_service: AuthService = Depends(get_auth_service),
 ):
     access_token, refresh_token = await auth_service.rotate(payload)
 
+    unset_legacy_refresh_cookie(response)
     jwt_security.set_access_cookies(access_token, response)
     jwt_security.set_refresh_cookies(refresh_token, response)
 
@@ -53,6 +58,21 @@ async def login(
 ):
     user, access_token, refresh_token = await auth_service.authenticate(data)
 
+    unset_legacy_refresh_cookie(response)
+    jwt_security.set_access_cookies(access_token, response)
+    jwt_security.set_refresh_cookies(refresh_token, response)
+    return user
+
+
+@router.post("/key-login", response_model=UserPublic)
+async def key_login(
+    data: KeyLogin,
+    response: Response,
+    _rate_limit: None = Depends(auth_rate_limit),
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    user, access_token, refresh_token = await auth_service.authenticate_key(data)
+    unset_legacy_refresh_cookie(response)
     jwt_security.set_access_cookies(access_token, response)
     jwt_security.set_refresh_cookies(refresh_token, response)
     return user
@@ -65,5 +85,6 @@ async def logout(
     auth_service: AuthService = Depends(get_auth_service),
 ):
     await auth_service.revoke(payload)
+    unset_legacy_refresh_cookie(response)
     jwt_security.unset_refresh_cookies(response)
     jwt_security.unset_access_cookies(response)

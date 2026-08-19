@@ -2,7 +2,10 @@ from datetime import timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
-from authx import AuthX, AuthXConfig
+from authx import AuthX, AuthXConfig, TokenPayload
+from authx.exceptions import AuthXException
+from authx.schema import RequestToken
+from fastapi import Request, Response
 
 _ph = PasswordHasher()
 
@@ -36,6 +39,53 @@ def _make_jwt_security() -> AuthX:
 
 
 jwt_security = _make_jwt_security()
+
+
+def unset_legacy_refresh_cookie(response: Response) -> None:
+    """Remove refresh cookies issued before their path was narrowed."""
+    response.delete_cookie(
+        key=jwt_security.config.JWT_REFRESH_COOKIE_NAME,
+        path="/",
+        domain=jwt_security.config.JWT_COOKIE_DOMAIN,
+    )
+
+
+async def refresh_token_required(request: Request) -> TokenPayload:
+    """Validate the first usable refresh JWT when legacy paths cause duplicates."""
+    config = jwt_security.config
+    candidates = [
+        value
+        for header in request.headers.getlist("cookie")
+        for chunk in header.split(";")
+        for key, separator, value in [chunk.strip().partition("=")]
+        if separator and key == config.JWT_REFRESH_COOKIE_NAME and value
+    ]
+    if len(candidates) <= 1:
+        return await jwt_security.refresh_token_required(request)
+
+    csrf_token = request.headers.get(config.JWT_REFRESH_CSRF_HEADER_NAME)
+    last_error: AuthXException | None = None
+    for candidate in candidates:
+        try:
+            if await jwt_security.is_token_in_blocklist(candidate):
+                continue
+            return jwt_security.verify_token(
+                RequestToken(
+                    token=candidate,
+                    csrf=csrf_token,
+                    type="refresh",
+                    location="cookies",
+                ),
+                verify_type=True,
+                verify_fresh=False,
+                verify_csrf=True,
+            )
+        except AuthXException as exc:
+            last_error = exc
+
+    if last_error is not None:
+        raise last_error
+    return await jwt_security.refresh_token_required(request)
 
 
 def hash_password(password: str) -> str:

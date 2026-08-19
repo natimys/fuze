@@ -5,12 +5,13 @@ from uuid import UUID, uuid4
 
 from authx import TokenPayload
 
-from core.exceptions import InvalidAuthCredentials
+from core.exceptions import CapabilityDisabled, InvalidAuthCredentials
+from core.instance_config import get_fuze_config
 from core.security import jwt_security, verify_password
 from core.settings import get_settings
 
 from modules.auth.repository import AuthSessionRepository
-from modules.auth.schemas import UserLogin, UserRegister
+from modules.auth.schemas import KeyLogin, UserLogin, UserRegister
 from modules.users.models import User
 from modules.users.service import UserService
 
@@ -41,23 +42,47 @@ class AuthService:
         return access_token, refresh_token
 
     async def register(self, data: UserRegister) -> User:
+        config = get_fuze_config()
+        if not config.auth.registration:
+            raise CapabilityDisabled("registration_disabled")
         user = await self.user_service.register(
             email=data.email, name=data.name, password=data.password.get_secret_value()
         )
         return user
 
     async def authenticate(self, data: UserLogin) -> tuple[User, str, str]:
+        if get_fuze_config().auth.mode not in {"password", "both"}:
+            raise CapabilityDisabled("password_login_disabled")
         user = await self.user_service.get_user_by_email(data.email)
 
         if not user or not user.is_active:
             raise InvalidAuthCredentials()
 
         password = data.password.get_secret_value()
-        if not verify_password(plain_password=password, hashed_password=user.password):
+        if user.password is None or not verify_password(
+            plain_password=password, hashed_password=user.password
+        ):
             raise InvalidAuthCredentials()
 
         access_token, refresh_token = await self._start_session(user.id)
         return user, access_token, refresh_token
+
+    async def authenticate_key(self, data: KeyLogin) -> tuple[User, str, str]:
+        if get_fuze_config().auth.mode not in {"key", "both"}:
+            raise CapabilityDisabled("key_login_disabled")
+        key_hash = sha256(data.key.get_secret_value().encode("utf-8")).hexdigest()
+        key = await self.session_repository.get_access_key_for_update(key_hash)
+        if key is None or key.revoked_at is not None:
+            await self.session_repository.rollback()
+            raise InvalidAuthCredentials()
+        user = await self.user_service.get_user_by_id(key.user_id)
+        if user is None or not user.is_active:
+            await self.session_repository.rollback()
+            raise InvalidAuthCredentials()
+        now = datetime.now(timezone.utc)
+        await self.session_repository.mark_key_used(key, now)
+        tokens = await self._start_session(user.id, access_key_id=key.id)
+        return user, *tokens
 
     async def rotate(self, payload: TokenPayload) -> tuple[str, str]:
         user_id, session_id, refresh_jti = self._parse_payload(payload)
@@ -86,6 +111,7 @@ class AuthService:
                 user_id=user_id,
                 refresh_jti_hash=self._hash_jti(new_refresh_jti),
                 expires_at=expires_at,
+                access_key_id=session.access_key_id,
             )
             session.revoked_at = now
             session.replaced_by = new_session_id
@@ -118,7 +144,9 @@ class AuthService:
         else:
             await self.session_repository.rollback()
 
-    async def _start_session(self, user_id: int) -> tuple[str, str]:
+    async def _start_session(
+        self, user_id: int, access_key_id: UUID | None = None
+    ) -> tuple[str, str]:
         session_id = uuid4()
         refresh_jti = str(uuid4())
         try:
@@ -127,6 +155,7 @@ class AuthService:
                 user_id=user_id,
                 refresh_jti_hash=self._hash_jti(refresh_jti),
                 expires_at=self._refresh_expiry(),
+                access_key_id=access_key_id,
             )
             await self.session_repository.commit()
         except Exception:

@@ -5,6 +5,7 @@ import re
 from uuid import uuid4
 
 import uvicorn
+from authx import JWTDecodeError
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,6 +13,7 @@ from loguru import logger
 from sqlalchemy import text
 
 from core.exceptions import AppException
+from core.instance_config import get_fuze_config
 from core.modules import register_modules
 from core.security import jwt_security
 from core.settings import get_settings
@@ -59,7 +61,32 @@ app = FastAPI(
 
 jwt_security.handle_errors(app)
 
+
+@app.exception_handler(JWTDecodeError)
+async def jwt_decode_error_handler(request: Request, exc: JWTDecodeError):
+    return JSONResponse(
+        status_code=401,
+        content={"message": "Invalid Token", "error_type": type(exc).__name__},
+    )
+
 register_modules(app, prefix=settings.API_PREFIX)
+
+
+@app.get(f"{settings.API_PREFIX}/config", tags=["config"])
+async def public_config():
+    config = get_fuze_config()
+    return {
+        "auth": {
+            "mode": config.auth.mode,
+            "registration": config.auth.registration,
+        },
+        "features": {"playback": config.features.playback},
+        "providers": {
+            "youtube": config.providers.youtube,
+            "yandex": config.providers.yandex,
+            "spotify": config.providers.spotify,
+        },
+    }
 
 app.add_middleware(
     CORSMiddleware,

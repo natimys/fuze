@@ -42,6 +42,35 @@ async def test_login_returns_user_and_http_only_cookies(existing_user):
     assert "csrf_refresh_token" in existing_user.cookies
 
 
+async def test_login_removes_legacy_root_refresh_cookie(existing_user):
+    existing_user.cookies.set(
+        "refresh_token", "legacy", domain="test.local", path="/"
+    )
+
+    response = await existing_user.post(
+        "/api/v1/auth/login",
+        json={"email": "test@email.com", "password": "test_password123"},
+    )
+
+    assert response.status_code == 200
+    set_cookie = response.headers.get_list("set-cookie")
+    assert any(
+        "refresh_token=" in value
+        and "Max-Age=0" in value
+        and "Path=/" in value
+        and "Path=/api/v1/auth/refresh" not in value
+        for value in set_cookie
+    )
+    refresh_cookies = [
+        cookie
+        for cookie in existing_user.cookies.jar
+        if cookie.name == "refresh_token"
+    ]
+    assert len(refresh_cookies) == 1
+    assert refresh_cookies[0].path == "/api/v1/auth/refresh"
+    assert refresh_cookies[0].value != "legacy"
+
+
 async def test_me_uses_cookie_auth(existing_user):
     response = await existing_user.get("/api/v1/auth/me")
 
@@ -60,6 +89,15 @@ async def test_bearer_token_is_not_accepted(existing_user):
     assert response.status_code == 401
 
 
+async def test_invalid_access_token_triggers_refresh_status(existing_user):
+    existing_user.cookies.set("access_token", "invalid", path="/")
+
+    response = await existing_user.get("/api/v1/auth/me")
+
+    assert response.status_code == 401
+    assert response.json()["error_type"] == "JWTDecodeError"
+
+
 async def test_refresh_rotates_refresh_token(existing_user):
     old_refresh = existing_user.cookies["refresh_token"]
 
@@ -68,6 +106,24 @@ async def test_refresh_rotates_refresh_token(existing_user):
     assert response.status_code == 204
     assert response.content == b""
     assert existing_user.cookies["refresh_token"] != old_refresh
+
+
+async def test_refresh_recovers_from_legacy_duplicate_cookie(existing_user):
+    existing_user.cookies.set(
+        "refresh_token", "legacy", domain="test.local", path="/"
+    )
+
+    response = await existing_user.post("/api/v1/auth/refresh")
+
+    assert response.status_code == 204
+    refresh_cookies = [
+        cookie
+        for cookie in existing_user.cookies.jar
+        if cookie.name == "refresh_token"
+    ]
+    assert len(refresh_cookies) == 1
+    assert refresh_cookies[0].path == "/api/v1/auth/refresh"
+    assert refresh_cookies[0].value != "legacy"
 
 
 async def test_old_refresh_token_cannot_be_reused(existing_user):

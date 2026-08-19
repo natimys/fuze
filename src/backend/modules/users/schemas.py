@@ -6,7 +6,7 @@ from core.enums import UserRole
 class UserRead(BaseModel):
     id: int
     name: str
-    email: str
+    email: str | None
     role: UserRole
     is_active: bool = True
 
