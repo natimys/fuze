@@ -1,323 +1,111 @@
-<div align="center">
-
 # Fuze
 
-**Self-hosted music streaming platform that unifies Spotify, YouTube Music, Yandex Music, and other sources into one place.**
+Fuze is a self-hosted music player with YouTube, Yandex Music and Spotify discovery, PostgreSQL-backed instance configuration, Redis jobs and S3-compatible media storage.
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.136+-009688.svg)](https://fastapi.tiangolo.com/)
-[![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+## Install on a server
 
-</div>
-
----
-
-## About
-
-Fuze is a self-hosted music streaming service. Search via Yandex Music, pull audio
-from YouTube, store it in MinIO - one interface for all of it.
-
-**Key features:**
-
-- **Unified search** - find tracks across multiple platforms from one search bar
-- **Smart caching** - Redis-backed caching for search results and YouTube URLs
-- **S3 storage** - MinIO integration for self-hosted audio storage
-- **Modular backend** - auth, users, tracks: each is an independent module you can
-  toggle on or off
-- **Frontend** - Next.js 16 + React 19 + Tailwind CSS with a full player UI
-*for developers*
-- **CLI tooling** - manage Docker, modules, database migrations, and integrations
-  from the terminal
-
-→ **[fuze.cynaqu.ru](https://fuze.cynaqu.ru)** - live demo
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| **Backend** | Python 3.12, FastAPI, SQLAlchemy 2.0, Alembic |
-| **Frontend** | Next.js 16, React 19, TypeScript, Tailwind CSS 4, Zustand |
-| **Database** | PostgreSQL 18 |
-| **Cache** | Redis 7 |
-| **Object Storage** | MinIO (S3-compatible) |
-| **Auth** | JWT via AuthX, Argon2 password hashing |
-| **Integrations** | Yandex Music API, yt-dlp / asyncyt |
-| **Infra** | Docker Compose, uv (Python package manager) |
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- [Docker](https://docs.docker.com/get-docker/) & Docker Compose
-
-#### Development
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) (backend)
-- [Node.js 18+](https://nodejs.org/) (frontend)
-- [Python 3.12+](https://www.python.org/downloads/)
-
-### Installation
+Production installation does not require Git, Python, Node.js or `uv`. It requires Linux, a running Docker Engine and the Docker Compose plugin.
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/fuze.git
-cd fuze
+curl -fsSL https://github.com/natimys/fuze/releases/latest/download/install.sh | sudo bash
+```
 
-# Install Python dependencies
+The installer verifies the host, asks for Local/LAN or Public HTTPS mode, downloads digest-pinned multi-architecture images from GHCR, runs migrations and starts an interactive first-admin bootstrap. The default installation is `/opt/fuze`.
+
+Local/LAN mode serves HTTP on port 3000 by default and must not be exposed directly to the Internet. Public HTTPS mode asks for application/storage domains and an ACME email; Caddy exposes only ports 80 and 443.
+
+After installation, application settings are managed by an administrator at `/player/settings`. Infrastructure endpoints, TLS, image versions and deployment secrets remain file-managed and cannot be edited from the site.
+
+## Update
+
+Stable updates are always explicit:
+
+```bash
+curl -fsSL https://github.com/natimys/fuze/releases/latest/download/install.sh |
+  sudo bash -s -- --update
+```
+
+An update creates a pre-update backup, preserves the previous deployment bundle, pulls digest-pinned images, runs the one-shot migration service and waits for readiness. Failed readiness restores the previous bundle and writes a redacted diagnostic log under `/opt/fuze/deploy`.
+
+To install a specific release, pass `--version vX.Y.Z`. Fuze never updates itself in the background and stable installs never consume the `edge` channel.
+
+## Backup and restore
+
+The Compose `backup` service creates a daily custom-format PostgreSQL dump and retains seven daily backups by default. Each archive also contains the deployment environment, Compose/Caddy files, version manifest and encryption/deployment secrets. MinIO media is deliberately excluded because it is treated as a rebuildable cache.
+
+Create an explicit backup:
+
+```bash
+cd /opt/fuze
+sudo docker compose run --rm backup backup daily
+```
+
+Restore only through the installer:
+
+```bash
+curl -fsSL https://github.com/natimys/fuze/releases/latest/download/install.sh |
+  sudo bash -s -- --restore /opt/fuze/backups/fuze-daily-TIMESTAMP.tar.gz
+```
+
+Keep off-host copies of both `.tar.gz` and `.tar.gz.sha256`. Anyone with a backup can recover provider credentials and signing keys, so protect it like a password vault.
+
+## Operations and rescue
+
+Container lifecycle is standard Docker Compose; there is no host CLI.
+
+```bash
+cd /opt/fuze
+sudo docker compose ps
+sudo docker compose logs -f backend worker
+sudo docker compose restart backend
+```
+
+The backend image contains a narrowly scoped rescue CLI:
+
+```bash
+sudo docker compose run --rm backend fuze rescue bootstrap-admin
+sudo docker compose run --rm backend fuze rescue reset-admin-password EMAIL
+sudo docker compose run --rm backend fuze rescue promote-user EMAIL
+sudo docker compose exec backend fuze rescue doctor
+sudo docker compose exec backend fuze rescue db-status
+sudo docker compose exec backend fuze rescue config-show
+```
+
+Rescue commands do not edit host deployment files, invoke Docker or perform schema downgrade. See [operations runbooks](docs/operations/runbooks.md) for failed updates, key loss, migration and provider diagnostics.
+
+## Developer setup from Git
+
+The repository checkout is only for development. Developers need Python 3.12, `uv`, Node.js 22 and Docker Compose.
+
+```bash
+cp .env.example .env
+cp .env.test.example .env.test
 uv sync
-
-# Activate venv
-Windows:
-  .venv/Scripts/activate.ps1
-Linux:
-  source .venv/bin/activate
-
-# Create your .env from the example
-project env init
+docker compose up -d --build
 ```
 
-Instance behavior is configured in `config/fuze.toml`; changes take effect after
-restarting backend, worker, and beat. This file is the only source of truth for
-auth mode, registration, playback, enabled providers, and Spotify market:
+Development Compose keeps `build:` and exposes PostgreSQL/MinIO on loopback for debugging. It uses the same one-shot `migrate` service as production. `fuze.toml` is legacy-only and is not mounted by new deployments; transition installations can import it with `fuze rescue import-legacy-config`.
 
-```toml
-[auth]
-mode = "password" # password | key | both
-registration = true
-
-[features]
-playback = true
-
-[providers]
-youtube = true
-yandex = false
-spotify = false
-spotify_market = "US"
-```
-
-Keep only provider credentials in `.env`. Enabling Yandex or Spotify without
-the matching token/client credentials makes startup fail with a configuration
-error.
-
-Key-only users and reusable access keys are managed from the CLI:
+Run checks:
 
 ```bash
-project users create-key-user "Display name" --label initial
-project users issue-key USER_ID --label laptop
-project users list-keys USER_ID
-project users revoke-key KEY_ID
-```
-
-Issued secrets are displayed once. Revoking a key immediately revokes every
-active session created with it.
-
-### Configuration
-
-Edit `.env` and set the required values:
-
-```env.example
-# Database
-ENVIRONMENT=development
-DB_HOST=db
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_NAME=database
-
-REDIS_URL=redis://redis:6379/0
-CELERY_BROKER_URL=redis://redis:6379/1
-
-# Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-JWT_SECURITY_KEY="CHANGE-THIS-PLEASE"
-
-# Yandex Music (get token via CLI: project env setup yandex)
-YANDEX_ACCESS_TOKEN=
-
-# CORS settings
-# change example.com to your public frontend domain
-CORS_ORIGINS=["https://example.com","http://localhost:3000"]
-CORS_ALLOW_CREDENTIALS=true
-CORS_ALLOW_METHODS=["*"]
-CORS_ALLOW_HEADERS=["*"]
-
-# Tokens configuration
-ACCESS_TOKEN_EXPIRES=15
-REFRESH_TOKEN_EXPIRES=30
-COOKIE_SECURE=false # true behind production HTTPS
-COOKIE_SAMESITE=lax
-
-# MinIO S3 configuration
-MINIO_ENDPOINT=minio:9000
-MINIO_EXTERNAL_ENDPOINT=localhost:9000
-MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=minioadmin
-MINIO_BUCKET=tracks
-MINIO_SECURE=false
-MINIO_EXTERNAL_SECURE=false
-
-# Redis-backed per-client request limits
-AUTH_RATE_LIMIT_REQUESTS=20
-SEARCH_RATE_LIMIT_REQUESTS=60
-ACQUIRE_RATE_LIMIT_REQUESTS=20
-
-# DEBUG
-DEBUG=true
-```
-
-Production startup fails fast when cookies or the browser-facing MinIO endpoint
-are not HTTPS, debug mode or development database/object-storage credentials are
-still enabled, the JWT key is too short, or credentialed CORS contains `*`.
-
-### Running
-
-**With Docker (recommended):**
-
-```bash
-docker compose up -d
-```
-
-This starts PostgreSQL, Redis, MinIO, the API, Celery worker/beat, and frontend.
-
-**Production-like HTTPS media check:**
-
-```bash
-cp .env.media.example .env.media  # use copy on Windows, then replace the secrets
-docker compose -p fuze-media -f docker-compose.yml -f docker-compose.media.yml \
-  --env-file .env --env-file .env.media up -d --build
-docker compose -p fuze-media -f docker-compose.yml -f docker-compose.media.yml \
-  --env-file .env --env-file .env.media --profile media-test \
-  run --rm media-smoke
-```
-
-The overlay serves the UI at `https://fuze.localhost:8443` and presigned media
-at `https://storage.localhost:8443` through Caddy's local CA. It provisions the
-bucket with MinIO root credentials, while the API and worker receive a separate
-bucket-scoped account. The smoke test uploads a disposable object, validates an
-HTTPS `Range` response against that CA (`206`, `Accept-Ranges`, `Content-Range`, exact bytes),
-deletes it, and confirms that the media account cannot create another bucket.
-The dedicated `fuze-media` Compose project name also keeps this gate's volumes
-separate from an existing development stack.
-
-**Local development:**
-
-```bash
-# Start infrastructure services only
-docker compose up -d db redis minio
-
-# Run database migrations
-cd src/backend
-alembic upgrade head
-
-# Start the backend
-uvicorn main:app --host 0.0.0.0 --port 8000
-
-# In another terminal, start the frontend
-cd src/frontend
-npm run dev
-```
-
-### Tests
-
-Tests refuse to run against a database whose name does not contain `test` or
-matches the configured production database.
-
-```bash
-copy .env.test.example .env.test  # use cp on Linux/macOS
-docker compose --profile test up -d db-test redis minio
+docker compose --profile test up -d db-test
 uv run pytest
-
-# Deterministic browser flow (mock API, real Next.js UI)
+uv run ruff check .
 cd src/frontend
-npx playwright install chromium  # first run only
-npm run test:e2e
+npm ci
+npm test -- --run
+npm run build
 ```
 
-### Access
+## Architecture and security
 
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:3000 |
-| Backend API | http://localhost:8000 |
-| Swagger Docs | http://localhost:8000/docs |
-| MinIO Console | http://localhost:9001 |
-
----
-
-## CLI
-
-The project ships with a CLI tool for managing infrastructure, modules, and integrations.
-
-```bash
-# Show project info, container status, and active modules
-project info
-
-# Manage Docker services
-project docker up
-project docker down
-project docker logs
-
-# Manage database migrations
-project db migrate
-project db rollback
-
-# Toggle backend modules
-project module toggle tracks
-
-# Manage users
-project users create # use to create admin user
-
-# Initialize .env from .env.example
-project env init
-
-# Set up Yandex Music integration (device auth flow)
-project env setup yandex
-```
-
----
-
-## Project Structure
-
-```
-fuze/
-├── src/
-│   ├── backend/
-│   │   ├── core/              # Framework: settings, modules, security, exceptions
-│   │   ├── database/          # SQLAlchemy engine, session, base model
-│   │   ├── integrations/      # External services: Yandex, YouTube, Redis cache, MinIO storage
-│   │   ├── modules/
-│   │   │   ├── auth/          # JWT authentication
-│   │   │   ├── users/         # User management
-│   │   │   └── tracks/        # Track search, download, streaming
-│   │   ├── alembic/           # Database migrations
-│   │   └── main.py            # FastAPI application entry point
-│   ├── cli/                   # Project CLI tool (Typer + Rich)
-│   └── frontend/              # Next.js application
-├── docker-compose.yml
-├── pyproject.toml
-└── uv.lock
-```
-
----
-
-## Modules
-
-The backend uses a modular architecture. Each module lives in `src/backend/modules/` and can be independently enabled or disabled via `module.py`:
-
-| Module | Description |
-|--------|-------------|
-| `auth` | JWT authentication, login, registration, token refresh |
-| `users` | User profiles and role-based access control |
-| `tracks` | Search across providers, queue downloads via Celery, stream from MinIO |
-| `playlists` | Private user playlists and ordered playlist items |
-
----
-
-## WARNING
-The frontend was completely vibecoded, I'm a backend developer, not a frontend developer.
+- Backend, worker, beat, migration and rescue commands use the same non-root backend image.
+- Application configuration and audit history live in PostgreSQL. Provider secrets are encrypted with a dedicated config key and are never returned by the API.
+- PostgreSQL, Redis and the MinIO console are not published in Public HTTPS mode. Proxy/frontend have no direct database network access.
+- No Fuze service receives the Docker socket.
+- Telemetry is disabled; Fuze sends no product metrics unless a future explicit opt-in is implemented.
+- Release images target `linux/amd64` and `linux/arm64`, carry OCI metadata, SBOM/provenance attestations and keyless Cosign signatures.
 
 ## License
 
