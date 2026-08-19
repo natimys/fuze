@@ -11,7 +11,11 @@ from core.settings import TestSettings
 from database.base import Base
 from database.dependencies import get_db
 
-os.environ.setdefault("AUTH_RATE_LIMIT_REQUESTS", "1000")
+# Application-level limits make the suite order-dependent because all test clients
+# share one Redis instance and IP. RedisRateLimit itself is covered separately.
+os.environ["AUTH_RATE_LIMIT_REQUESTS"] = "0"
+os.environ["SEARCH_RATE_LIMIT_REQUESTS"] = "0"
+os.environ["ACQUIRE_RATE_LIMIT_REQUESTS"] = "0"
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 

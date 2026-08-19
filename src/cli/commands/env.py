@@ -36,14 +36,10 @@ def init(
             console.print("[yellow]docker-compose.yml already exists or docker-compose.yml.example missing[/yellow]")
     if config:
         config_file = ROOT / "config" / "fuze.toml"
+        config_example = ROOT / "config" / "fuze.toml.example"
         if not config_file.exists():
             config_file.parent.mkdir(parents=True, exist_ok=True)
-            config_file.write_text(
-                '[auth]\nmode = "password"\nregistration = true\n\n'
-                '[features]\nplayback = true\n\n'
-                '[providers]\nyoutube = true\nyandex = false\nspotify = false\nspotify_market = "US"\n',
-                encoding="utf-8",
-            )
+            config_file.write_text(config_example.read_text(encoding="utf-8"), encoding="utf-8")
             console.print("[green]config/fuze.toml created[/green]")
         else:
             console.print("[yellow]config/fuze.toml already exists[/yellow]")

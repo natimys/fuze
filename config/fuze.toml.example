@@ -1,0 +1,12 @@
+[auth]
+mode = "password"
+registration = true
+
+[features]
+playback = true
+
+[providers]
+youtube = true
+yandex = false
+spotify = false
+spotify_market = "US"
