@@ -14,6 +14,7 @@ from sqlalchemy import create_engine, text
 app = typer.Typer(help="Manage project users")
 console = Console()
 _ph = PasswordHasher()
+DB_CONNECT_TIMEOUT_SECONDS = 5
 
 
 def _new_access_key() -> tuple[str, str]:
@@ -45,6 +46,13 @@ def _get_db_url(host_override: str | None = None) -> str:
     port = env.get("DB_PORT", "5432")
     name = env.get("DB_NAME", "database")
     return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{name}"
+
+
+def _create_db_engine(host_override: str | None = None):
+    return create_engine(
+        _get_db_url(host_override=host_override),
+        connect_args={"connect_timeout": DB_CONNECT_TIMEOUT_SECONDS},
+    )
 
 
 def _get_password(prompt: str = "Password: ") -> str:
@@ -122,8 +130,7 @@ def create(
         console.print("[red]Password must be at least 6 characters[/red]")
         raise typer.Exit(1)
 
-    url = _get_db_url(host_override=host)
-    engine = create_engine(url)
+    engine = _create_db_engine(host_override=host)
 
     with engine.connect() as conn:
         existing = conn.execute(
@@ -158,7 +165,7 @@ def create_key_user(
     if role not in ("admin", "user"):
         raise typer.BadParameter("Role must be 'admin' or 'user'")
     secret, key_hash = _new_access_key()
-    engine = create_engine(_get_db_url(host_override=host))
+    engine = _create_db_engine(host_override=host)
     with engine.begin() as conn:
         user_id = conn.execute(
             text(
@@ -190,7 +197,7 @@ def issue_key(
     """Issue an additional access key and print it once."""
     secret, key_hash = _new_access_key()
     key_id = uuid4()
-    engine = create_engine(_get_db_url(host_override=host))
+    engine = _create_db_engine(host_override=host)
     with engine.begin() as conn:
         if conn.execute(text("SELECT id FROM users WHERE id = :id"), {"id": user_id}).first() is None:
             raise typer.BadParameter(f"User {user_id} does not exist")
@@ -210,7 +217,7 @@ def list_keys(
     host: str | None = typer.Option(None, "--host", help="Database host override"),
 ):
     """List access-key metadata without secrets."""
-    engine = create_engine(_get_db_url(host_override=host))
+    engine = _create_db_engine(host_override=host)
     with engine.connect() as conn:
         rows = conn.execute(
             text("SELECT id, label, created_at, last_used_at, revoked_at FROM access_keys WHERE user_id = :user_id ORDER BY created_at"),
@@ -229,7 +236,7 @@ def revoke_key(
     host: str | None = typer.Option(None, "--host", help="Database host override"),
 ):
     """Revoke a key and all sessions created with it atomically."""
-    engine = create_engine(_get_db_url(host_override=host))
+    engine = _create_db_engine(host_override=host)
     with engine.begin() as conn:
         changed = conn.execute(
             text("UPDATE access_keys SET revoked_at = now() WHERE id = :id AND revoked_at IS NULL RETURNING id"),
