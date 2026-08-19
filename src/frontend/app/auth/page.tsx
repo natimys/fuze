@@ -50,6 +50,12 @@ export default function AuthPage() {
     return <div className="flex min-h-dvh items-center justify-center bg-bg p-4 text-sm text-text-muted" role="status">{error || 'Loading instance configuration…'}</div>
   }
 
+  if (config.setup_required) {
+    return <div className="flex min-h-dvh items-center justify-center bg-bg p-4"><div className="w-full max-w-lg rounded-xl border border-border bg-surface p-8"><h1 className="text-xl font-semibold">Administrator setup required</h1><p className="mt-2 text-sm text-text-muted">Create the first administrator from the installation directory, then reload this page.</p><code className="mt-5 block select-text overflow-x-auto rounded-lg bg-bg p-4 text-xs text-text-secondary">docker compose run --rm backend fuze rescue bootstrap-admin</code></div></div>
+  }
+
+  const isKeyOnly = config.auth.mode === 'key'
+
   return (
     <div className="flex items-center justify-center min-h-dvh bg-bg p-4">
       <motion.div
@@ -61,10 +67,12 @@ export default function AuthPage() {
         <div className="bg-surface rounded-xl border border-border p-8">
           <div className="mb-8">
             <h1 className="text-xl font-semibold text-text-primary tracking-tight">
-              {isLogin ? 'Welcome back' : 'Create account'}
+              {isLogin ? (isKeyOnly ? 'Enter access key' : 'Welcome back') : 'Create account'}
             </h1>
             <p className="text-sm text-text-muted mt-1">
-              {isLogin ? 'Sign in to your Fuze account' : 'Create your Fuze account'}
+              {isLogin
+                ? (isKeyOnly ? 'Use your Fuze access key to continue' : 'Sign in to your Fuze account')
+                : 'Create your Fuze account'}
             </p>
           </div>
 
@@ -144,7 +152,7 @@ export default function AuthPage() {
               disabled={loading}
               className="w-full h-10 bg-hover-strong hover:bg-surface-hover text-text-primary rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
             >
-              {loading ? 'Loading...' : isLogin ? 'Sign in' : 'Create account'}
+              {loading ? 'Loading...' : isLogin ? (method === 'key' ? 'Continue with key' : 'Sign in') : 'Create account'}
             </button>
           </form>
 

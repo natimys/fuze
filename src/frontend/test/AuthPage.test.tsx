@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AuthPage from '@/app/auth/page'
 import { api } from '@/lib/api'
@@ -12,18 +12,23 @@ vi.mock('@/lib/api', () => ({
 }))
 
 const publicConfig = (mode: 'password' | 'key' | 'both', registration: boolean) => ({
+  instance_name: 'Fuze',
+  setup_required: false,
   auth: { mode, registration },
   features: { playback: true },
   providers: { youtube: true, yandex: false, spotify: false },
 })
 
 describe('instance auth capabilities', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => { cleanup(); vi.clearAllMocks() })
 
   it('shows only key login for a private key-only instance', async () => {
     vi.mocked(api.config).mockResolvedValue(publicConfig('key', false))
     render(<AuthPage />)
+    expect(await screen.findByRole('heading', { name: 'Enter access key' })).toBeInTheDocument()
+    expect(screen.getByText('Use your Fuze access key to continue')).toBeInTheDocument()
     expect(await screen.findByLabelText('Access key')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue with key' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Email')).not.toBeInTheDocument()
     expect(screen.queryByText('Sign up')).not.toBeInTheDocument()
   })
@@ -44,5 +49,13 @@ describe('instance auth capabilities', () => {
     expect(screen.getByRole('button', { name: 'Password' })).toBeInTheDocument()
     fireEvent.click(keyButton)
     expect(screen.getByLabelText('Access key')).toBeInTheDocument()
+  })
+
+  it('shows the exact rescue command until the first admin exists', async () => {
+    vi.mocked(api.config).mockResolvedValue({ ...publicConfig('password', false), setup_required: true })
+    render(<AuthPage />)
+    expect(await screen.findByRole('heading', { name: 'Administrator setup required' })).toBeInTheDocument()
+    expect(screen.getByText('docker compose run --rm backend fuze rescue bootstrap-admin')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Email')).not.toBeInTheDocument()
   })
 })

@@ -13,6 +13,7 @@ import {
   MusicNote,
 } from '@phosphor-icons/react'
 import { motion, AnimatePresence } from 'motion/react'
+import Link from 'next/link'
 
 interface SidebarProps {
   isOpen: boolean
@@ -113,7 +114,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 </a>
               ))}
               <div className="mt-2 flex items-center gap-3 px-3 py-2 text-xs text-text-muted" aria-disabled="true"><Heart size={16} aria-hidden="true" /><span>Favorites <span className="sr-only">is </span>(coming later)</span></div>
-              <div className="flex items-center gap-3 px-3 py-2 text-xs text-text-muted" aria-disabled="true"><Gear size={16} aria-hidden="true" /><span>Settings <span className="sr-only">is </span>(coming later)</span></div>
+              {user?.role === 'admin' && <Link href="/player/settings" onClick={onClose} aria-current={pathname.startsWith('/player/settings') ? 'page' : undefined} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${pathname.startsWith('/player/settings') ? 'bg-hover-strong text-text-primary' : 'text-text-secondary hover:bg-hover hover:text-text-primary'}`}><Gear size={18} /><span>Settings</span></Link>}
             </nav>
 
             <div className="p-3 border-t border-border">

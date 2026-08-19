@@ -1,4 +1,4 @@
-import type { KeyLogin, PlaylistCreate, PlaylistDetail, PlaylistReorder, PlaylistSummary, PlaylistTrack, PlaylistUpdate, PublicConfig, TrackAcquireResponse, TrackRead, TrackSearchResponse, TrackSource, TrackStreamResponse, UserLogin, UserPublic, UserRegister } from './types'
+import type { AdminSettings, AdminSettingsWrite, KeyLogin, PlaylistCreate, PlaylistDetail, PlaylistReorder, PlaylistSummary, PlaylistTrack, PlaylistUpdate, ProviderTest, PublicConfig, SystemStatus, TrackAcquireResponse, TrackRead, TrackSearchResponse, TrackSource, TrackStreamResponse, UserCreate, UserLogin, UserPublic, UserRegister, UsersResponse, UserUpdate } from './types'
 
 const API_BASE = '/api/v1'
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
@@ -97,5 +97,14 @@ export const api = {
     addItem: (playlistId: number, trackId: number) => request<PlaylistTrack>(`/playlists/${playlistId}/items`, { method: 'POST', body: JSON.stringify({ track_id: trackId }) }),
     removeItem: (playlistId: number, itemId: number) => request<void>(`/playlists/${playlistId}/items/${itemId}`, { method: 'DELETE' }),
     reorder: (playlistId: number, data: PlaylistReorder) => request<PlaylistDetail>(`/playlists/${playlistId}/items/reorder`, { method: 'PUT', body: JSON.stringify(data) }),
+  },
+  admin: {
+    settings: () => request<AdminSettings>('/admin/settings'),
+    saveSettings: (data: AdminSettingsWrite) => request<AdminSettings>('/admin/settings', { method: 'PUT', body: JSON.stringify(data) }),
+    system: () => request<SystemStatus>('/admin/system'),
+    testProvider: (provider: 'youtube' | 'yandex' | 'spotify') => request<ProviderTest>(`/admin/providers/${provider}/test`, { method: 'POST' }),
+    users: (page = 1, size = 20, search = '') => request<UsersResponse>(`/users?page=${page}&size=${size}&search=${encodeURIComponent(search)}`),
+    createUser: (data: UserCreate) => request<UserPublic>('/users', { method: 'POST', body: JSON.stringify(data) }),
+    updateUser: (id: number, data: UserUpdate) => request<UserPublic>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   },
 }

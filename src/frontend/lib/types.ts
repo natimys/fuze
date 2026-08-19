@@ -6,10 +6,47 @@ export interface UserLogin { email: string; password: string }
 export interface KeyLogin { key: string }
 
 export interface PublicConfig {
+  instance_name: string
+  setup_required: boolean
   auth: { mode: 'password' | 'key' | 'both'; registration: boolean }
   features: { playback: boolean }
   providers: { youtube: boolean; yandex: boolean; spotify: boolean }
 }
+
+export interface AdminSettings {
+  version: number
+  updated_at: string
+  updated_by: number | null
+  instance_name: string
+  auth: PublicConfig['auth']
+  features: PublicConfig['features']
+  providers: PublicConfig['providers'] & { spotify_market: string }
+  credentials: Record<'yandex_token' | 'spotify_client_id' | 'spotify_client_secret', { configured: boolean }>
+}
+
+export interface AdminSettingsWrite {
+  version: number
+  instance_name: string
+  auth: AdminSettings['auth']
+  features: AdminSettings['features']
+  providers: AdminSettings['providers']
+  credentials?: Partial<Record<'yandex_token' | 'spotify_client_id' | 'spotify_client_secret', string | null>>
+}
+
+export interface SystemStatus {
+  app_version: string
+  schema_revision: string
+  config_version: number
+  health: Record<string, 'ok' | 'unknown' | 'unavailable'>
+  last_backup: string | null
+  available_version: string | null
+  commands: Record<string, string>
+}
+
+export interface UsersResponse { data: UserRead[]; total: number; page: number; size: number }
+export interface UserCreate { name: string; email: string; password: string; role: UserRole }
+export interface UserUpdate { name?: string; email?: string; password?: string; role?: UserRole; is_active?: boolean }
+export interface ProviderTest { status: 'ok' | 'disabled' | 'unavailable' | 'not_configured'; latency_ms: number; message: string }
 
 export type TrackSource = 'yandex' | 'youtube' | 'spotify'
 export type TrackCapability = 'acquire' | 'external' | 'catalog'
