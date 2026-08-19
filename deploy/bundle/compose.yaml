@@ -1,0 +1,193 @@
+name: fuze
+
+x-backend: &backend
+  image: ${BACKEND_IMAGE:?BACKEND_IMAGE must be digest-pinned}
+  env_file:
+    - path: .env
+      required: false
+  environment: &backend-environment
+    DB_HOST: postgres
+    DB_PORT: "5432"
+    DB_PASSWORD_FILE: /run/secrets/postgres_password
+    JWT_SECURITY_KEY_FILE: /run/secrets/jwt_key
+    CONFIG_ENCRYPTION_KEY_FILE: /run/secrets/config_encryption_key
+    MINIO_ACCESS_KEY_FILE: /run/secrets/minio_media_access_key
+    MINIO_SECRET_KEY_FILE: /run/secrets/minio_media_secret_key
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: redis://redis:6379/1
+    MINIO_ENDPOINT: minio:9000
+  secrets:
+    - postgres_password
+    - jwt_key
+    - config_encryption_key
+    - minio_media_access_key
+    - minio_media_secret_key
+  networks: [app, data]
+  restart: unless-stopped
+  stop_grace_period: 45s
+
+services:
+  postgres:
+    image: postgres:17.6-bookworm
+    environment:
+      POSTGRES_DB: ${DB_NAME:-fuze}
+      POSTGRES_USER: ${DB_USER:-fuze}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    networks: [data]
+    restart: unless-stopped
+    stop_grace_period: 60s
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7.4.5-alpine
+    command: [redis-server, --appendonly, "yes", --save, "60", "1"]
+    volumes: [redis_data:/data]
+    networks: [data]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+    command: [server, /data]
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_access_key
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_secret_key
+    secrets: [minio_root_access_key, minio_root_secret_key]
+    volumes: [minio_data:/data]
+    ports:
+      - ${BIND_ADDRESS:-0.0.0.0}:${MEDIA_PORT:-9000}:9000
+    networks: [app, data]
+    restart: unless-stopped
+    stop_grace_period: 60s
+    healthcheck:
+      test: [CMD, curl, -f, http://localhost:9000/minio/health/live]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2025-07-21T05-28-08Z
+    depends_on:
+      minio: {condition: service_healthy}
+    entrypoint: [/bin/sh, /deploy/minio-init.sh]
+    environment:
+      MINIO_BUCKET: ${MINIO_BUCKET:-tracks}
+    secrets: [minio_root_access_key, minio_root_secret_key, minio_media_access_key, minio_media_secret_key]
+    volumes: [./deploy:/deploy:ro]
+    networks: [data]
+    restart: "no"
+
+  migrate:
+    <<: *backend
+    command: [migrate]
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+
+  backend:
+    <<: *backend
+    command: [api]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  worker:
+    <<: *backend
+    command: [worker]
+    depends_on:
+      backend: {condition: service_healthy}
+    healthcheck:
+      test: [CMD-SHELL, "celery -A worker.celery_app:celery_app inspect ping --destination celery@$${HOSTNAME} --timeout 3 | grep -q pong"]
+      interval: 30s
+      timeout: 8s
+      retries: 5
+
+  beat:
+    <<: *backend
+    command: [beat]
+    depends_on:
+      backend: {condition: service_healthy}
+    healthcheck:
+      test: [CMD-SHELL, "test -f /tmp/fuze-celerybeat-schedule"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE must be digest-pinned}
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+    depends_on:
+      backend: {condition: service_healthy}
+    ports:
+      - ${BIND_ADDRESS:-0.0.0.0}:${APP_PORT:-3000}:3000
+    networks: [app]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:3000/]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  backup:
+    image: postgres:17.6-bookworm
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PGPASSWORD_FILE: /run/secrets/postgres_password
+      DB_HOST: postgres
+      BACKUP_RETENTION_DAILY: ${BACKUP_RETENTION_DAILY:-7}
+      BACKUP_RETENTION_PREUPDATE: ${BACKUP_RETENTION_PREUPDATE:-3}
+    secrets: [postgres_password]
+    volumes:
+      - ./backups:/backups
+      - ./secrets:/source/secrets:ro
+      - ./.env:/source/.env:ro
+      - ./VERSION:/source/VERSION:ro
+      - ./compose.yaml:/source/compose.yaml:ro
+      - ./compose.https.yaml:/source/compose.https.yaml:ro
+      - ./Caddyfile:/source/Caddyfile:ro
+      - ./deploy:/deploy:ro
+    networks: [data]
+    depends_on:
+      postgres: {condition: service_healthy}
+    command: [/bin/bash, /deploy/backup.sh, schedule]
+    restart: unless-stopped
+
+networks:
+  edge: {}
+  app: {internal: true}
+  data: {internal: true}
+
+volumes:
+  postgres_data: {}
+  redis_data: {}
+  minio_data: {}
+
+secrets:
+  postgres_password: {file: ./secrets/postgres_password}
+  jwt_key: {file: ./secrets/jwt_key}
+  config_encryption_key: {file: ./secrets/config_encryption_key}
+  minio_root_access_key: {file: ./secrets/minio_root_access_key}
+  minio_root_secret_key: {file: ./secrets/minio_root_secret_key}
+  minio_media_access_key: {file: ./secrets/minio_media_access_key}
+  minio_media_secret_key: {file: ./secrets/minio_media_secret_key}

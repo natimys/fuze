@@ -13,6 +13,16 @@ RUN npm run build
 
 FROM node:22-alpine AS runner
 
+ARG VERSION=dev
+ARG REVISION=unknown
+ARG CREATED=unknown
+
+LABEL org.opencontainers.image.title="Fuze frontend" \
+      org.opencontainers.image.version="$VERSION" \
+      org.opencontainers.image.revision="$REVISION" \
+      org.opencontainers.image.source="https://github.com/natimys/fuze" \
+      org.opencontainers.image.created="$CREATED"
+
 WORKDIR /app
 
 ENV NODE_ENV=production

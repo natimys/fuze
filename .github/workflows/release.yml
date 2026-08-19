@@ -1,0 +1,202 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/natimys/fuze-backend
+  FRONTEND_IMAGE: ghcr.io/natimys/fuze-frontend
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.6-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fuze_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d fuze_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7.4.5-alpine
+        ports: ["6379:6379"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with: {node-version: 22, cache: npm, cache-dependency-path: src/frontend/package-lock.json}
+      - run: uv sync --frozen
+      - name: Backend tests and migration gate
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/fuze_test
+          DB_NAME: fuze
+          DB_HOST: localhost
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECURITY_KEY: test-only-secret-key-with-at-least-32-characters
+          CONFIG_ENCRYPTION_KEY: test-only-config-key-with-at-least-32-characters
+          CORS_ORIGINS: '["http://localhost:3000"]'
+          CORS_ALLOW_CREDENTIALS: "true"
+          CORS_ALLOW_METHODS: '["*"]'
+          CORS_ALLOW_HEADERS: '["*"]'
+          REFRESH_TOKEN_EXPIRES: "30"
+          ACCESS_TOKEN_EXPIRES: "15"
+        run: |
+          uv run pytest
+          uv run ruff check .
+          test "$(cd src/backend && uv run alembic heads | wc -l)" -eq 1
+      - working-directory: src/frontend
+        run: |
+          npm ci
+          npm test -- --run
+          npm run build
+          npm audit --audit-level=high
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      backend_digest: ${{ steps.backend.outputs.digest }}
+      frontend_digest: ${{ steps.frontend.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
+      - id: meta
+        run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - id: backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/backend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ github.ref_name }}
+            ${{ env.BACKEND_IMAGE }}:stable
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            REVISION=${{ github.sha }}
+            CREATED=${{ steps.meta.outputs.created }}
+      - id: frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: src/frontend
+          file: src/frontend/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:${{ github.ref_name }}
+            ${{ env.FRONTEND_IMAGE }}:stable
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            REVISION=${{ github.sha }}
+            CREATED=${{ steps.meta.outputs.created }}
+      - uses: sigstore/cosign-installer@v3
+      - name: Native amd64 and QEMU arm64 smoke tests
+        run: |
+          docker run --rm --platform linux/amd64 "${BACKEND_IMAGE}@${{ steps.backend.outputs.digest }}" fuze --help
+          docker run --rm --platform linux/arm64 "${BACKEND_IMAGE}@${{ steps.backend.outputs.digest }}" fuze --help
+          docker image inspect "${BACKEND_IMAGE}@${{ steps.backend.outputs.digest }}" >/dev/null
+      - name: Keyless signatures
+        run: |
+          cosign sign --yes "${BACKEND_IMAGE}@${{ steps.backend.outputs.digest }}"
+          cosign sign --yes "${FRONTEND_IMAGE}@${{ steps.frontend.outputs.digest }}"
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build digest-pinned deployment bundle
+        env:
+          BACKEND_DIGEST: ${{ needs.publish.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.publish.outputs.frontend_digest }}
+        run: |
+          cp -a deploy/bundle release-bundle
+          printf '%s\n' "${GITHUB_REF_NAME}" > release-bundle/VERSION
+          printf 'BACKEND_IMAGE=%s@%s\nFRONTEND_IMAGE=%s@%s\n' "$BACKEND_IMAGE" "$BACKEND_DIGEST" "$FRONTEND_IMAGE" "$FRONTEND_DIGEST" > release-bundle/.env.release
+          tar -C release-bundle -czf fuze-deploy.tar.gz .
+          cp deploy/install.sh install.sh
+          chmod +x install.sh
+          sha256sum install.sh fuze-deploy.tar.gz > SHA256SUMS
+      - name: Validate Local and Public HTTPS Compose
+        run: |
+          mkdir -p release-bundle/secrets release-bundle/backups
+          for name in postgres_password jwt_key config_encryption_key minio_root_access_key minio_root_secret_key minio_media_access_key minio_media_secret_key; do printf test-secret-value-at-least-32-characters > "release-bundle/secrets/$name"; done
+          cat release-bundle/.env.release > release-bundle/.env
+          cat >> release-bundle/.env <<'EOF'
+          DB_NAME=fuze
+          DB_USER=fuze
+          APP_DOMAIN=fuze.example.com
+          STORAGE_DOMAIN=media.example.com
+          ACME_EMAIL=admin@example.com
+          CORS_ORIGINS=["https://fuze.example.com"]
+          CORS_ALLOW_CREDENTIALS=true
+          CORS_ALLOW_METHODS=["*"]
+          CORS_ALLOW_HEADERS=["*"]
+          REFRESH_TOKEN_EXPIRES=30
+          ACCESS_TOKEN_EXPIRES=15
+          EOF
+          (cd release-bundle && docker compose config >/dev/null)
+          (cd release-bundle && docker compose -f compose.yaml -f compose.https.yaml config >/dev/null)
+      - name: Fresh install and backup/restore rehearsal
+        run: |
+          cd release-bundle
+          docker compose up -d
+          for attempt in $(seq 1 60); do
+            docker compose exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)" && break
+            test "$attempt" -lt 60
+            sleep 5
+          done
+          printf 'release-test-password\n' | docker compose run --rm backend fuze rescue bootstrap-admin --email admin@example.com --name 'Release Admin' --password-stdin
+          curl --fail --retry 10 http://127.0.0.1:3000/ >/dev/null
+          curl --fail http://127.0.0.1:3000/api/v1/config | grep -q '"setup_required":false'
+          archive="$(docker compose run --rm backup backup daily | tail -1)"
+          test -f ".${archive}"
+          docker compose stop frontend backend worker beat backup
+          docker compose exec -T postgres psql -U fuze -d fuze -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
+          docker compose run --rm backup restore "$archive"
+          docker compose up -d
+          docker compose exec -T backend fuze rescue db-status --json | grep -q '"drift": false'
+          docker compose down -v
+      - uses: sigstore/cosign-installer@v3
+      - name: Export OCI SBOM and provenance attestations
+        env:
+          BACKEND_DIGEST: ${{ needs.publish.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.publish.outputs.frontend_digest }}
+        run: |
+          cosign download sbom "${BACKEND_IMAGE}@${BACKEND_DIGEST}" > backend-sbom.spdx.json
+          cosign download sbom "${FRONTEND_IMAGE}@${FRONTEND_DIGEST}" > frontend-sbom.spdx.json
+          cosign download attestation "${BACKEND_IMAGE}@${BACKEND_DIGEST}" > backend-provenance.jsonl
+          cosign download attestation "${FRONTEND_IMAGE}@${FRONTEND_DIGEST}" > frontend-provenance.jsonl
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            install.sh
+            fuze-deploy.tar.gz
+            SHA256SUMS
+            backend-sbom.spdx.json
+            frontend-sbom.spdx.json
+            backend-provenance.jsonl
+            frontend-provenance.jsonl

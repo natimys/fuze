@@ -1,0 +1,33 @@
+services:
+  frontend:
+    ports: !reset []
+
+  minio:
+    ports: !reset []
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
+      STORAGE_DOMAIN: ${STORAGE_DOMAIN:?STORAGE_DOMAIN is required}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports: [80:80, 443:443, 443:443/udp]
+    networks: [edge, app]
+    depends_on:
+      frontend: {condition: service_healthy}
+      minio: {condition: service_healthy}
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:2019/config/]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}

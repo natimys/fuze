@@ -6,6 +6,8 @@ services:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql
     healthcheck:
@@ -69,15 +71,13 @@ services:
       - "127.0.0.1:8000:8000"
     env_file:
       - .env
-    volumes:
-      - ./config/fuze.toml:/app/config/fuze.toml:ro
     environment:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       MINIO_ENDPOINT: minio:9000
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       minio:
@@ -89,6 +89,18 @@ services:
       retries: 12
       start_period: 10s
 
+  migrate:
+    build:
+      context: .
+      dockerfile: src/backend/Dockerfile
+    command: ["migrate"]
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
   worker:
     restart: always
     build:
@@ -97,8 +109,6 @@ services:
     command: ["worker"]
     env_file:
       - .env
-    volumes:
-      - ./config/fuze.toml:/app/config/fuze.toml:ro
     environment:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
@@ -125,8 +135,6 @@ services:
     command: ["beat"]
     env_file:
       - .env
-    volumes:
-      - ./config/fuze.toml:/app/config/fuze.toml:ro
     environment:
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
