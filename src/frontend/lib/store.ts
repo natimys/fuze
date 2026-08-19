@@ -1,17 +1,18 @@
 import { create } from 'zustand'
-import type { TrackSearchResult, UserPublic } from './types'
+import type { PublicConfig, TrackSearchResult, UserPublic } from './types'
 
 interface Store {
   queue: TrackSearchResult[]; currentTrack: TrackSearchResult | null; isPlaying: boolean
   currentTime: number; duration: number; volume: number; isMuted: boolean
   isShuffled: boolean; isRepeating: boolean; isLoading: boolean; playbackError: string | null
-  user: UserPublic | null; hydrated: boolean
+  user: UserPublic | null; config: PublicConfig | null; hydrated: boolean
   setQueue: (v: TrackSearchResult[]) => void; addToQueue: (v: TrackSearchResult) => void
   removeFromQueue: (key: string) => void; setCurrentTrack: (v: TrackSearchResult | null) => void
   setIsPlaying: (v: boolean) => void; togglePlay: () => void; setCurrentTime: (v: number) => void
   setDuration: (v: number) => void; setVolume: (v: number) => void; toggleMute: () => void
   toggleShuffle: () => void; toggleRepeat: () => void; setIsLoading: (v: boolean) => void
   setPlaybackError: (v: string | null) => void; setUser: (v: UserPublic | null) => void
+  setConfig: (v: PublicConfig) => void
   hydrate: () => void; playNext: () => void; playPrev: () => void
 }
 
@@ -20,7 +21,7 @@ const canQueue = (track: TrackSearchResult) => track.capability === 'acquire' &&
 export const usePlayerStore = create<Store>((set, get) => ({
   queue: [], currentTrack: null, isPlaying: false, currentTime: 0, duration: 0, volume: 0.7,
   isMuted: false, isShuffled: false, isRepeating: false, isLoading: false, playbackError: null,
-  user: null, hydrated: false,
+  user: null, config: null, hydrated: false,
   setQueue: (queue) => set({ queue }),
   addToQueue: (track) => set((state) => canQueue(track) && !state.queue.some((item) => item.key === track.key) ? { queue: [...state.queue, track] } : state),
   removeFromQueue: (key) => set((state) => {
@@ -40,6 +41,9 @@ export const usePlayerStore = create<Store>((set, get) => ({
   toggleRepeat: () => set((state) => ({ isRepeating: !state.isRepeating })),
   setIsLoading: (isLoading) => set({ isLoading }), setPlaybackError: (playbackError) => set({ playbackError }),
   setUser: (user) => set({ user }),
+  setConfig: (config) => set(config.features.playback ? { config } : {
+    config, queue: [], currentTrack: null, isPlaying: false, playbackError: null,
+  }),
   hydrate: () => {
     if (typeof window === 'undefined' || get().hydrated) return
     try {

@@ -1,4 +1,4 @@
-import type { PlaylistCreate, PlaylistDetail, PlaylistReorder, PlaylistSummary, PlaylistTrack, PlaylistUpdate, TrackAcquireResponse, TrackRead, TrackSearchResponse, TrackSource, TrackStreamResponse, UserLogin, UserPublic, UserRegister } from './types'
+import type { KeyLogin, PlaylistCreate, PlaylistDetail, PlaylistReorder, PlaylistSummary, PlaylistTrack, PlaylistUpdate, PublicConfig, TrackAcquireResponse, TrackRead, TrackSearchResponse, TrackSource, TrackStreamResponse, UserLogin, UserPublic, UserRegister } from './types'
 
 const API_BASE = '/api/v1'
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
@@ -74,9 +74,11 @@ async function request<T>(path: string, options: RequestInit = {}, protectedRequ
 }
 
 export const api = {
+  config: () => request<PublicConfig>('/config', {}, false),
   auth: {
     register: (data: UserRegister) => request<UserPublic>('/auth/register', { method: 'POST', body: JSON.stringify(data) }, false),
     login: (data: UserLogin) => request<UserPublic>('/auth/login', { method: 'POST', body: JSON.stringify(data) }, false),
+    keyLogin: (data: KeyLogin) => request<UserPublic>('/auth/key-login', { method: 'POST', body: JSON.stringify(data) }, false),
     logout: () => request<void>('/auth/logout', { method: 'POST' }),
     me: () => request<UserPublic>('/auth/me'),
   },

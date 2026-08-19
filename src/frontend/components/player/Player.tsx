@@ -25,7 +25,9 @@ export function Player() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const user = usePlayerStore((s) => s.user)
+  const config = usePlayerStore((s) => s.config)
   const setUser = usePlayerStore((s) => s.setUser)
+  const setConfig = usePlayerStore((s) => s.setConfig)
   const currentTrack = usePlayerStore((s) => s.currentTrack)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const queue = usePlayerStore((s) => s.queue)
@@ -46,11 +48,13 @@ export function Player() {
 
   useEffect(() => {
     hydrate()
-    api.auth.me().then((value) => { setUser(value); setAuthState('ready') }).catch(() => {
+    Promise.all([api.auth.me(), api.config()]).then(([userValue, configValue]) => {
+      setUser(userValue); setConfig(configValue); setAuthState('ready')
+    }).catch(() => {
       setAuthState('denied')
       window.location.replace('/auth')
     })
-  }, [hydrate, setUser])
+  }, [hydrate, setUser, setConfig])
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -68,7 +72,7 @@ export function Player() {
       switch (e.key) {
         case ' ':
           e.preventDefault()
-          if (currentTrack) {
+          if (config?.features.playback && currentTrack) {
             setIsPlaying(!isPlaying)
           }
           break
@@ -103,9 +107,10 @@ export function Player() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [currentTrack, isPlaying, volume, queue.length, setIsPlaying, setVolume, setCurrentTime, playNext, playPrev])
+  }, [config, currentTrack, isPlaying, volume, queue.length, setIsPlaying, setVolume, setCurrentTime, playNext, playPrev])
 
   useEffect(() => {
+    if (!config?.features.playback) return
     if (!audioRef.current) {
       const audio = new Audio()
       audioRef.current = audio
@@ -133,7 +138,7 @@ export function Player() {
         audioRef.current = null
       }
     }
-  }, [setCurrentTime, setDuration, setIsPlaying, setIsLoading, setPlaybackError])
+  }, [config, setCurrentTime, setDuration, setIsPlaying, setIsLoading, setPlaybackError])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -248,6 +253,12 @@ export function Player() {
         </header>
 
         <main className="flex-1 flex items-center justify-center px-8 py-4 overflow-hidden">
+          {!config?.features.playback ? <section className="max-w-xl text-center">
+            <p className="text-xs font-medium uppercase tracking-[.2em] text-text-muted">Catalog mode</p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-text-primary">Explore the music catalog</h1>
+            <p className="mt-3 text-sm leading-6 text-text-muted">Playback is disabled on this Fuze instance. Search and playlists remain available.</p>
+            <button type="button" onClick={() => setSearchOpen(true)} className="mt-6 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-primary hover:bg-surface-raised">Search catalog</button>
+          </section> :
           <div className="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 items-start">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -264,10 +275,10 @@ export function Player() {
             >
               <Queue />
             </motion.div>
-          </div>
+          </div>}
         </main>
 
-        <ControlStrip />
+        {config?.features.playback && <ControlStrip />}
       </div>
     </div>
   )

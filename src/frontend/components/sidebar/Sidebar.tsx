@@ -124,7 +124,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-text-primary truncate">{user.name}</div>
-                    <div className="text-xs text-text-muted truncate">{user.email}</div>
+                    {user.email && <div className="text-xs text-text-muted truncate">{user.email}</div>}
                   </div>
                   <button
                     onClick={handleLogout}

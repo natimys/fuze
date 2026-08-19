@@ -1,11 +1,18 @@
 export type UserRole = 'admin' | 'user'
-export interface UserPublic { id: number; name: string; email: string; role: UserRole; is_active: boolean }
+export interface UserPublic { id: number; name: string; email: string | null; role: UserRole; is_active: boolean }
 export type UserRead = UserPublic
 export interface UserRegister { name: string; email: string; password: string }
 export interface UserLogin { email: string; password: string }
+export interface KeyLogin { key: string }
+
+export interface PublicConfig {
+  auth: { mode: 'password' | 'key' | 'both'; registration: boolean }
+  features: { playback: boolean }
+  providers: { youtube: boolean; yandex: boolean; spotify: boolean }
+}
 
 export type TrackSource = 'yandex' | 'youtube' | 'spotify'
-export type TrackCapability = 'acquire' | 'external'
+export type TrackCapability = 'acquire' | 'external' | 'catalog'
 export type TrackAvailability = 'remote' | 'queued' | 'downloading' | 'ready' | 'failed'
 
 export interface TrackSearchResult {

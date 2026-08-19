@@ -12,18 +12,19 @@ export function PlaylistShell({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const setUser = usePlayerStore((state) => state.setUser)
+  const setConfig = usePlayerStore((state) => state.setConfig)
   const hydrate = usePlayerStore((state) => state.hydrate)
 
   useEffect(() => {
     hydrate()
     const controller = new AbortController()
-    void api.auth.me().then((user) => {
-      if (!controller.signal.aborted) { setUser(user); setAuthState('ready') }
+    void Promise.all([api.auth.me(), api.config()]).then(([user, config]) => {
+      if (!controller.signal.aborted) { setUser(user); setConfig(config); setAuthState('ready') }
     }).catch(() => {
       if (!controller.signal.aborted) { setAuthState('denied'); window.location.replace('/auth') }
     })
     return () => controller.abort()
-  }, [hydrate, setUser])
+  }, [hydrate, setUser, setConfig])
 
   if (authState !== 'ready') return <div className="flex min-h-[100dvh] items-center justify-center bg-bg text-sm text-text-muted" role="status">{authState === 'checking' ? 'Checking session...' : 'Redirecting...'}</div>
 

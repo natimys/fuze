@@ -29,6 +29,7 @@ export function SearchModal({ isOpen, onClose }: Props) {
   const sequence = useRef(0)
   const addToQueue = usePlayerStore((s) => s.addToQueue)
   const setCurrentTrack = usePlayerStore((s) => s.setCurrentTrack)
+  const config = usePlayerStore((s) => s.config)
 
   const close = useCallback(() => {
     searchController.current?.abort()
@@ -77,8 +78,8 @@ export function SearchModal({ isOpen, onClose }: Props) {
       try {
         const response = await api.tracks.search(q, controller.signal)
         if (requestId !== sequence.current) return
-        setResults(response.data)
-        setSpotifyUrl(response.spotify_search_url ?? null)
+        setResults(response.data.filter((track) => !config || config.providers[track.source]))
+        setSpotifyUrl(config?.providers.spotify === false ? null : response.spotify_search_url ?? null)
         setProviderMessages(Object.entries(response.providers).filter(([, state]) => state.status !== 'ok').map(([name, state]) => `${name}: ${state.status.replaceAll('_', ' ')}`))
       } catch (reason) {
         if (!controller.signal.aborted && requestId === sequence.current) {
@@ -90,7 +91,7 @@ export function SearchModal({ isOpen, onClose }: Props) {
       } finally { if (!controller.signal.aborted && requestId === sequence.current) setLoading(false) }
     }, 300)
     return () => { clearTimeout(timer); controller.abort() }
-  }, [query])
+  }, [query, config])
 
   const update = (key: string, patch: Partial<TrackSearchResult>) => setResults((items) => items.map((item) => item.key === key ? { ...item, ...patch } : item))
 
@@ -124,6 +125,7 @@ export function SearchModal({ isOpen, onClose }: Props) {
   }
 
   async function act(track: TrackSearchResult, play: boolean) {
+    if (!config?.features.playback || track.capability === 'catalog') return
     if (track.capability === 'external') {
       if (track.external_url) window.open(track.external_url, '_blank', 'noopener,noreferrer')
       return
@@ -145,16 +147,16 @@ export function SearchModal({ isOpen, onClose }: Props) {
   const renderRows = (items: TrackSearchResult[]) => items.map((track) => {
     const state = busy[track.key] ?? track.availability
     return <div key={track.key} className="group flex items-center gap-3 p-2 rounded-lg hover:bg-hover">
-      <button type="button" onClick={() => void act(track, true)} disabled={Boolean(busy[track.key])} className="flex flex-1 min-w-0 items-center gap-3 text-left disabled:opacity-60" aria-label={`${track.capability === 'external' ? 'Open' : 'Play'} ${track.title}`}>
+      <button type="button" onClick={() => void act(track, true)} disabled={Boolean(busy[track.key]) || track.capability === 'catalog'} className="flex flex-1 min-w-0 items-center gap-3 text-left disabled:opacity-60" aria-label={`${track.capability === 'catalog' ? 'Catalog result' : track.capability === 'external' ? 'Open' : 'Play'} ${track.title}`}>
         <div className="w-10 h-10 rounded bg-surface-raised overflow-hidden flex items-center justify-center">{track.cover_url ? <img src={track.cover_url} alt="" className="w-full h-full object-cover" /> : <MusicNote size={17} className="text-text-muted" aria-hidden="true" />}</div>
         <div className="flex-1 min-w-0">
           <div className="text-sm text-text-primary truncate" title={track.title}>{track.title}</div>
           <div className="text-xs text-text-muted truncate" title={track.artist}>{track.artist}{track.source !== 'spotify' && <> · {track.source}</>}</div>
         </div>
         <span className="text-xs text-text-muted font-mono">{duration(track.duration_ms)}</span>
-        {state === 'queued' || state === 'downloading' ? <span className="flex items-center gap-1 text-xs text-text-muted"><Spinner className="animate-spin" />{state}</span> : state === 'ready' ? <Check className="text-green-400" /> : track.capability === 'external' ? <ArrowSquareOut /> : <Play />}
+        {track.capability === 'catalog' ? null : state === 'queued' || state === 'downloading' ? <span className="flex items-center gap-1 text-xs text-text-muted"><Spinner className="animate-spin" />{state}</span> : state === 'ready' ? <Check className="text-green-400" /> : track.capability === 'external' ? <ArrowSquareOut /> : <Play />}
       </button>
-      {track.capability === 'acquire' && <button type="button" disabled={Boolean(busy[track.key])} onClick={() => void act(track, false)} aria-label={`Add ${track.title} to queue`} className="p-2 rounded-full text-text-secondary hover:bg-hover-strong disabled:opacity-40"><Plus size={15} /></button>}
+      {config?.features.playback && track.capability === 'acquire' && <button type="button" disabled={Boolean(busy[track.key])} onClick={() => void act(track, false)} aria-label={`Add ${track.title} to queue`} className="p-2 rounded-full text-text-secondary hover:bg-hover-strong disabled:opacity-40"><Plus size={15} /></button>}
     </div>
   })
 
