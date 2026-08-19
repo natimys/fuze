@@ -18,10 +18,8 @@ class Settings(BaseSettings):
     DB_NAME: str = "postgres"
 
     YANDEX_ACCESS_TOKEN: SecretStr | None = None
-    SPOTIFY_ENABLED: bool = False
     SPOTIFY_CLIENT_ID: str | None = None
     SPOTIFY_CLIENT_SECRET: SecretStr | None = None
-    SPOTIFY_MARKET: str = "US"
     TRACK_SEARCH_CACHE_TTL_SECONDS: int = 900
     TRACK_PROVIDER_TIMEOUT_SECONDS: float = 5
     API_PREFIX: str = "/api/v1"
@@ -86,14 +84,6 @@ class Settings(BaseSettings):
             )
         return value
 
-    @field_validator("SPOTIFY_MARKET", mode="after")
-    @classmethod
-    def normalize_spotify_market(cls, value: str) -> str:
-        value = value.strip().upper()
-        if len(value) != 2 or not value.isalpha():
-            raise ValueError("SPOTIFY_MARKET must be a two-letter country code")
-        return value
-
     @field_validator("COOKIE_SAMESITE", mode="after")
     @classmethod
     def validate_cookie_samesite(cls, value: str) -> str:
@@ -101,16 +91,6 @@ class Settings(BaseSettings):
         if normalized not in {"lax", "strict", "none"}:
             raise ValueError("COOKIE_SAMESITE must be lax, strict, or none")
         return normalized
-
-    @model_validator(mode="after")
-    def require_spotify_credentials(self):
-        if self.SPOTIFY_ENABLED and (
-            not self.SPOTIFY_CLIENT_ID or self.SPOTIFY_CLIENT_SECRET is None
-        ):
-            raise ValueError(
-                "SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET are required when SPOTIFY_ENABLED=true"
-            )
-        return self
 
     @model_validator(mode="after")
     def enforce_production_security(self):
@@ -199,6 +179,27 @@ class TestSettings(BaseSettings):
         )
 
 
+def validate_fuze_credentials(settings: Settings, config) -> None:
+    if config.providers.spotify and (
+        not settings.SPOTIFY_CLIENT_ID
+        or settings.SPOTIFY_CLIENT_SECRET is None
+        or not settings.SPOTIFY_CLIENT_SECRET.get_secret_value().strip()
+    ):
+        raise ValueError(
+            "providers.spotify: SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET are required"
+        )
+    if config.providers.yandex and (
+        settings.YANDEX_ACCESS_TOKEN is None
+        or not settings.YANDEX_ACCESS_TOKEN.get_secret_value().strip()
+    ):
+        raise ValueError("providers.yandex: YANDEX_ACCESS_TOKEN is required")
+
+
 @lru_cache
 def get_settings():
-    return Settings()
+    settings = Settings()
+    from core.instance_config import get_fuze_config
+
+    config = get_fuze_config()
+    validate_fuze_credentials(settings, config)
+    return settings
