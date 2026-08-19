@@ -40,6 +40,11 @@ async function installApi(page: Page) {
     }
 
     const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+    if (method === 'GET' && path === '/config') return json({
+      auth: { mode: 'password', registration: true },
+      features: { playback: true },
+      providers: { youtube: true, yandex: false, spotify: false },
+    })
     if (method === 'POST' && path === '/auth/login') return json(user)
     if (method === 'GET' && path === '/auth/me') {
       meCalls += 1
