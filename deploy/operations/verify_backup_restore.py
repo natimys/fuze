@@ -21,10 +21,23 @@ def run(*args: str, capture: bool = False) -> str:
     return result.stdout.strip() if capture else ""
 
 
-def wait_for_database(container: str) -> None:
+def wait_for_database(container: str, database: str) -> None:
     for _ in range(30):
+        # The image entrypoint starts a temporary server while creating POSTGRES_DB.
+        # PID 1 becomes postgres only after initialization and its restart complete.
         result = subprocess.run(
-            ["docker", "exec", container, "pg_isready", "-U", "postgres"],
+            [
+                "docker",
+                "exec",
+                container,
+                "sh",
+                "-ec",
+                'test "$(cat /proc/1/comm)" = postgres && '
+                'exec psql -U postgres -d "$1" --tuples-only --no-align '
+                "-c 'SELECT 1;'",
+                "wait-for-database",
+                database,
+            ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -58,7 +71,7 @@ def main() -> None:
             f"{volume}:/backup",
             POSTGRES_IMAGE,
         )
-        wait_for_database(source)
+        wait_for_database(source, "fuze")
         run(
             "docker",
             "exec",
@@ -100,7 +113,7 @@ def main() -> None:
             f"{volume}:/backup:ro",
             POSTGRES_IMAGE,
         )
-        wait_for_database(restored)
+        wait_for_database(restored, "fuze_restored")
         run(
             "docker",
             "exec",
