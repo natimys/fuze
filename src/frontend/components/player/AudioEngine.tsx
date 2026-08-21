@@ -4,6 +4,8 @@ import { useEffect, useRef } from 'react'
 import { api } from '@/lib/api'
 import { usePlayerStore } from '@/lib/store'
 import { audioContext } from './audioContext'
+import { resolvePlaybackSource } from '@/services/playbackSource'
+import { syncMediaSession } from '@/services/mediaSession'
 
 const wait = (ms: number, signal: AbortSignal) => new Promise<void>((resolve, reject) => {
   const timer = window.setTimeout(resolve, ms)
@@ -117,7 +119,7 @@ export function AudioEngine() {
     setIsLoading(true)
     void api.tracks.stream(currentTrack.track_id, controller.signal).then(async (response) => {
       if (controller.signal.aborted) return
-      audio.src = response.url
+      audio.src = await resolvePlaybackSource(currentTrack.track_id!, response.url)
       audio.load()
       await audio.play()
       if (!controller.signal.aborted) setIsPlaying(true)
@@ -147,6 +149,13 @@ export function AudioEngine() {
     if (audio) { audio.pause(); audio.currentTime = 0 }
     setCurrentTrack(null); setIsPlaying(false); setCurrentTime(0); setDuration(0)
   }, [queue.length, currentTrack, setCurrentTrack, setIsPlaying, setCurrentTime, setDuration])
+
+  useEffect(() => syncMediaSession(currentTrack, {
+    play: () => usePlayerStore.getState().setIsPlaying(true),
+    pause: () => usePlayerStore.getState().setIsPlaying(false),
+    next: () => usePlayerStore.getState().playNext(),
+    previous: () => usePlayerStore.getState().playPrev(),
+  }), [currentTrack])
 
   return null
 }

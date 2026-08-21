@@ -13,5 +13,5 @@ export default defineConfig([
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
     rules: { 'react-hooks/set-state-in-effect': 'off' },
   },
-  globalIgnores(['dist/**', 'node_modules/**']),
+  globalIgnores(['dist/**', 'node_modules/**', 'src-tauri/target/**', 'src-tauri/gen/**']),
 ])

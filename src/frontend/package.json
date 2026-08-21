@@ -10,12 +10,24 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --configLoader runner",
     "pretest:e2e": "npm run build",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
+    "android:init": "tauri android init",
+    "android:dev": "tauri android dev",
+    "android:build": "tauri android build",
+    "ios:init": "tauri ios init",
+    "ios:dev": "tauri ios dev",
+    "ios:build": "tauri ios build"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource-variable/geist-mono": "^5.2.8",
     "@phosphor-icons/react": "^2.1.7",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-fs": "^2.5.1",
+    "@tauri-apps/plugin-store": "^2.4.4",
     "motion": "^12.12.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -26,6 +38,7 @@
     "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.1.8",
+    "@tauri-apps/cli": "^2.11.4",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.5",
@@ -41,6 +54,7 @@
     "typescript": "^5",
     "typescript-eslint": "^8.46.1",
     "vite": "^7.1.7",
+    "vite-plugin-pwa": "^1.3.0",
     "vitest": "^4.1.10"
   }
 }

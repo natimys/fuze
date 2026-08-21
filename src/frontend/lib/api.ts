@@ -1,7 +1,8 @@
 import type { AdminSettings, AdminSettingsWrite, KeyLogin, PlaylistCreate, PlaylistDetail, PlaylistReorder, PlaylistSummary, PlaylistTrack, PlaylistUpdate, ProviderTest, PublicConfig, SystemStatus, TrackAcquireResponse, TrackRead, TrackSearchResponse, TrackSource, TrackStreamResponse, UserCreate, UserLogin, UserPublic, UserRegister, UsersResponse, UserUpdate } from './types'
 import type { ImportedTrack, ImportResult, ImportSource } from './types'
+import { apiBaseUrl } from '@/services/runtimeConfig'
 
-const API_BASE = '/api/v1'
+const API_BASE = apiBaseUrl
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 let refreshPromise: Promise<boolean> | null = null
 
