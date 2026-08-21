@@ -62,3 +62,28 @@ async def search_yandex(query: str, token: str | None = None) -> list[YandexTrac
             )
         )
     return tracks
+
+
+async def list_user_playlists(token: str) -> list[dict]:
+    client = await get_client(token=token)
+    playlists = await client.users_playlists_list()
+    return [{"id": str(item.kind), "title": item.title, "tracks_count": item.track_count or 0} for item in playlists]
+
+
+async def get_user_playlist(token: str, playlist_id: str) -> tuple[str, list[YandexTrackInfo]]:
+    client = await get_client(token=token)
+    playlist = await client.users_playlists(kind=int(playlist_id))
+    tracks: list[YandexTrackInfo] = []
+    for short in playlist.tracks or []:
+        track = short.track
+        if track is None:
+            continue
+        album = track.albums[0] if track.albums else None
+        tracks.append(YandexTrackInfo(
+            title=track.title, artist=track.artists[0].name if track.artists else "Unknown",
+            album=album.title if album else None, year=album.year if album else None,
+            duration_ms=track.duration_ms,
+            cover_url=track.get_cover_url(size="600x600") if track.cover_uri else None,
+            track_id=str(track.id),
+        ))
+    return playlist.title, tracks

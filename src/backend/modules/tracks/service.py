@@ -51,7 +51,13 @@ def _normalize(value: str) -> str:
 
 
 def _similarity(left: str, right: str) -> float:
-    return SequenceMatcher(None, _normalize(left), _normalize(right)).ratio()
+    normalized_left = _normalize(left)
+    normalized_right = _normalize(right)
+    if normalized_left and normalized_right and (
+        normalized_left in normalized_right or normalized_right in normalized_left
+    ):
+        return 1.0
+    return SequenceMatcher(None, normalized_left, normalized_right).ratio()
 
 
 def _validate_item(item: SearchItem) -> None:
@@ -162,12 +168,6 @@ class TracksService:
         config = snapshot.config
         if not config.features.playback:
             raise TrackCapabilityDisabled("playback_disabled")
-        if source == TrackSource.SPOTIFY.value:
-            raise InvalidTrackSource("spotify_is_external_only")
-        if self.enforce_config and source in {"youtube", "yandex", "spotify"} and not getattr(
-            config.providers, source
-        ):
-            raise TrackCapabilityDisabled("provider_disabled")
         provider = PROVIDERS.get(source)
         if provider is None:
             raise InvalidTrackSource("unsupported_source")
@@ -189,6 +189,14 @@ class TracksService:
                     existing.download_error_code or "max_attempts_exhausted"
                 )
             return AcquireResult(track=existing, newly_queued=should_enqueue)
+        if self.enforce_config and source in {"youtube", "yandex", "spotify"} and not getattr(
+            config.providers, source
+        ):
+            raise TrackCapabilityDisabled("provider_disabled")
+        if source == TrackSource.SPOTIFY.value:
+            # Spotify search results remain external-only, but imported playlist
+            # metadata already in our database can be resolved by the worker.
+            raise InvalidTrackSource("spotify_is_external_only")
         try:
             provider_secrets = {
                 **snapshot.secrets,
@@ -314,7 +322,7 @@ class TrackDownloadProcessor:
     async def _resolve_youtube_url(self, track: Track) -> str:
         if track.source == TrackSource.YOUTUBE:
             return track.yt_url or f"https://www.youtube.com/watch?v={track.source_id}"
-        key = f"yt_match:v2:{_normalize(track.artist)}:{_normalize(track.title)}"
+        key = f"yt_match:v4:{_normalize(track.artist)}:{_normalize(track.title)}"
         try:
             cached = await cache_get(key)
         except Exception:
@@ -341,7 +349,10 @@ class TrackDownloadProcessor:
             if duration_ok and title_score >= 0.8 and artist_score >= 0.8:
                 scored.append(((title_score + artist_score) / 2, candidate))
         scored.sort(key=lambda pair: pair[0], reverse=True)
-        if not scored or (len(scored) > 1 and scored[0][0] - scored[1][0] < 0.1):
+        # Music searches commonly return several uploads of the same recording.
+        # Once title, artist and duration have all passed the strict filters above,
+        # a close runner-up is not ambiguity: use the provider's relevance order.
+        if not scored:
             try:
                 await cache_set(key, {"negative": True}, ttl_seconds=120)
             except Exception:

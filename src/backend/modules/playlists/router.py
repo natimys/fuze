@@ -14,6 +14,11 @@ from .schemas import (
     PlaylistReorder,
     PlaylistSummary,
     PlaylistUpdate,
+    FilePlaylistImport,
+    ImportConnect,
+    ImportResult,
+    ImportSelection,
+    ImportSource,
 )
 from .service import PlaylistsService
 
@@ -40,6 +45,31 @@ async def create_playlist(
 ):
     try:
         return await service.create_playlist(data, user)
+    except PlaylistDomainError as exc:
+        _raise_http(exc)
+
+
+@router.post("/imports/yandex/playlists", response_model=list[ImportSource])
+async def yandex_import_sources(data: ImportConnect, service: PlaylistsService = Depends(get_playlist_service)):
+    try:
+        return await service.yandex_playlists(data.token)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Yandex Music authorization failed") from exc
+
+
+@router.post("/imports/yandex", response_model=ImportResult, status_code=status.HTTP_201_CREATED)
+async def import_yandex_playlists(data: ImportSelection, user: User = Depends(current_active_user), service: PlaylistsService = Depends(get_playlist_service)):
+    try:
+        return await service.import_yandex(data.token, data.playlist_ids, user)
+    except Exception as exc:
+        await service.repository.rollback()
+        raise HTTPException(status_code=502, detail="Yandex Music import failed") from exc
+
+
+@router.post("/imports/file", response_model=ImportResult, status_code=status.HTTP_201_CREATED)
+async def import_playlist_file(data: FilePlaylistImport, user: User = Depends(current_active_user), service: PlaylistsService = Depends(get_playlist_service)):
+    try:
+        return await service.import_file(data, user)
     except PlaylistDomainError as exc:
         _raise_http(exc)
 

@@ -10,13 +10,18 @@ from modules.tracks.providers import (
     search_cached,
     youtube_id,
 )
-from modules.tracks.service import TracksService, _validate_item
+from modules.tracks.service import TracksService, _similarity, _validate_item
 
 
 def test_youtube_id_accepts_only_canonical_length() -> None:
     assert youtube_id("dQw4w9WgXcQ") == "dQw4w9WgXcQ"
     assert youtube_id("https://youtu.be/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
     assert youtube_id("too-short") == ""
+
+
+def test_similarity_recognizes_artist_and_title_inside_video_title() -> None:
+    assert _similarity("Milky", "Milky - Just The Way You Are") == 1.0
+    assert _similarity("Ведьм у нас сжигают", "АЛЁНА ШВЕЦ. - ВЕДЬМ У НАС СЖИГАЮТ") == 1.0
 
 
 def test_track_metadata_rejects_overlong_audio() -> None:
@@ -49,6 +54,9 @@ class SearchRepository:
             )
         }
 
+    async def queue_existing(self, source, source_id, max_attempts=3):
+        return None, False
+
 
 @pytest.mark.asyncio
 async def test_search_uses_one_batch_lookup_and_marks_spotify_external(
@@ -78,6 +86,19 @@ async def test_search_uses_one_batch_lookup_and_marks_spotify_external(
 async def test_spotify_cannot_be_acquired() -> None:
     with pytest.raises(InvalidTrackSource, match="spotify_is_external_only"):
         await TracksService(SearchRepository()).acquire("spotify", "0" * 22)
+
+
+@pytest.mark.asyncio
+async def test_imported_spotify_track_can_be_acquired() -> None:
+    class ImportedRepository(SearchRepository):
+        async def queue_existing(self, source, source_id, max_attempts=3):
+            assert source == TrackSource.SPOTIFY
+            return ExistingTrack(11, TrackDownloadStatus.READY), False
+
+    result = await TracksService(ImportedRepository()).acquire("spotify", "0" * 22)
+
+    assert result.track.id == 11
+    assert not result.newly_queued
 
 
 @pytest.mark.asyncio
