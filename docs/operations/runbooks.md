@@ -41,7 +41,7 @@ Copy each archive together with its `.sha256` file to encrypted off-host storage
 
 ## Provider diagnostics
 
-Confirm the provider is enabled and credentials show `configured` in `/player/settings`, then use **Test connection**. The response deliberately omits upstream bodies and tokens. `fuze rescue config-show` can confirm presence and decryptability without revealing values. Provider disablement blocks new search/acquire operations within five seconds.
+Confirm the provider is enabled and credentials show `configured` in `/player/admin-settings`, then use **Test connection**. The response deliberately omits upstream bodies and tokens. `fuze rescue config-show` can confirm presence and decryptability without revealing values. Provider disablement blocks new search/acquire operations within five seconds.
 
 ## Manual Compose operations
 

@@ -14,7 +14,7 @@ The installer verifies the host, asks for Local/LAN or Public HTTPS mode, downlo
 
 Local/LAN mode serves HTTP on port 3000 by default and must not be exposed directly to the Internet. Public HTTPS mode asks for application/storage domains and an ACME email; Caddy exposes only ports 80 and 443.
 
-After installation, application settings are managed by an administrator at `/player/settings`. Infrastructure endpoints, TLS, image versions and deployment secrets remain file-managed and cannot be edited from the site.
+After installation, instance settings are managed by an administrator at `/player/admin-settings`. Personal client settings live separately at `/player/settings`. Infrastructure endpoints, TLS, image versions and deployment secrets remain file-managed and cannot be edited from the site.
 
 ## Update
 
@@ -94,9 +94,16 @@ uv run pytest
 uv run ruff check .
 cd src/frontend
 npm ci
-npm test -- --run
+npm run lint
+npm run typecheck
+npm test
 npm run build
+npm run dev
 ```
+
+The Vite development server listens on port `3000` and proxies `/api` to
+`API_PROXY_TARGET` (default: `http://127.0.0.1:8000`). Production uses the same
+relative `/api/v1` browser URLs through the frontend nginx container.
 
 ## Architecture and security
 
