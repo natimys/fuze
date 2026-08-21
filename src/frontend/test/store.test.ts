@@ -31,6 +31,17 @@ describe('player queue', () => {
     expect(usePlayerStore.getState().queue).toEqual([value])
   })
 
+  it('keeps pending tracks in playlist mode and updates their status', () => {
+    const pending = { ...track(1), availability: 'queued' as const }
+    usePlayerStore.getState().setQueue([pending], 'playlist')
+    usePlayerStore.getState().setCurrentTrack(pending)
+    usePlayerStore.getState().updateQueueTrack(pending.key, { availability: 'downloading' })
+
+    expect(usePlayerStore.getState().queueMode).toBe('playlist')
+    expect(usePlayerStore.getState().queue[0].availability).toBe('downloading')
+    expect(usePlayerStore.getState().currentTrack?.availability).toBe('downloading')
+  })
+
   it('selects the next track when the active item is removed', () => {
     const first = track(1)
     const second = track(2)

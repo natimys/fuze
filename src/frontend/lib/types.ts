@@ -124,3 +124,6 @@ export interface PlaylistDetail extends PlaylistSummary {
 export interface PlaylistCreate { title: string; description?: string | null }
 export interface PlaylistUpdate { title?: string; description?: string | null }
 export interface PlaylistReorder { item_ids: number[] }
+export interface ImportSource { id: string; title: string; tracks_count: number }
+export interface ImportedTrack { source_id: string; title: string; artist: string; album?: string | null; year?: number | null; duration_ms?: number | null; cover_url?: string | null }
+export interface ImportResult { playlists_created: number; tracks_added: number }

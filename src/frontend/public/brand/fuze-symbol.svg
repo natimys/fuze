@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42 7.6" role="img" aria-label="Fuze symbol">
+  <g fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="butt" stroke-linejoin="round">
+    <path d="M0 .5h14c4.8 0 6.4 3.3 16 3.3h12"/>
+    <path d="M0 2.7h14c4.8 0 6.4 1.1 16 1.1h12"/>
+    <path d="M0 4.9h14c4.8 0 6.4-1.1 16-1.1h12"/>
+    <path d="M0 7.1h14c4.8 0 6.4-3.3 16-3.3h12"/>
+  </g>
+</svg>

@@ -3,7 +3,7 @@
 import { usePlayerStore } from '@/lib/store'
 import { SpeakerSimpleHigh, SpeakerSimpleSlash } from '@phosphor-icons/react'
 import { useRef, useCallback } from 'react'
-import { audioContext } from './Player'
+import { audioContext } from './audioContext'
 
 export function VolumeControl() {
   const volume = usePlayerStore((s) => s.volume)

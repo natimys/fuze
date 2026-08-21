@@ -1,5 +1,3 @@
-'use client'
-
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, ApiError } from '@/lib/api'
 import type { AdminSettings, AdminSettingsWrite, ProviderTest, SystemStatus, UserPublic, UserRole } from '@/lib/types'
@@ -107,7 +105,7 @@ export default function SettingsPage() {
   if (currentUser && currentUser.role !== 'admin') return <PlaylistShell><div role="alert" className="rounded-xl border border-red-500/20 bg-red-500/10 p-6"><h1 className="text-xl font-semibold text-red-300">403 — administrator access required</h1></div></PlaylistShell>
 
   return <PlaylistShell>
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><h1 className="text-3xl font-semibold tracking-tight">Instance settings</h1><p className="mt-2 text-sm text-text-muted">Application configuration is applied to API and workers within five seconds.</p></div><button className={buttonClass} onClick={() => void load()} type="button">Reload</button></div>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><h1 className="text-3xl font-semibold tracking-tight">Admin Settings</h1><p className="mt-2 text-sm text-text-muted">Instance configuration is applied to API and workers within five seconds.</p></div><button className={buttonClass} onClick={() => void load()} type="button">Reload</button></div>
     {error && <div role="alert" className="mt-6 rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">{error}</div>}
     {message && <div role="status" className="mt-6 rounded-lg border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-300">{message}</div>}
     {!draft ? <div className="mt-10 text-sm text-text-muted" role="status">Loading settings…</div> : <div className="mt-8 grid gap-5">

@@ -1,9 +1,9 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import AuthPage from '@/app/auth/page'
+import { MemoryRouter } from 'react-router-dom'
+import AuthPage from '@/src/pages/AuthPage'
 import { api } from '@/lib/api'
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 vi.mock('@/lib/api', () => ({
   api: {
     config: vi.fn(),
@@ -21,10 +21,11 @@ const publicConfig = (mode: 'password' | 'key' | 'both', registration: boolean) 
 
 describe('instance auth capabilities', () => {
   beforeEach(() => { cleanup(); vi.clearAllMocks() })
+  const renderPage = () => render(<MemoryRouter><AuthPage /></MemoryRouter>)
 
   it('shows only key login for a private key-only instance', async () => {
     vi.mocked(api.config).mockResolvedValue(publicConfig('key', false))
-    render(<AuthPage />)
+    renderPage()
     expect(await screen.findByRole('heading', { name: 'Enter access key' })).toBeInTheDocument()
     expect(screen.getByText('Use your Fuze access key to continue')).toBeInTheDocument()
     expect(await screen.findByLabelText('Access key')).toBeInTheDocument()
@@ -35,7 +36,7 @@ describe('instance auth capabilities', () => {
 
   it('shows registration only when enabled', async () => {
     vi.mocked(api.config).mockResolvedValue(publicConfig('password', true))
-    render(<AuthPage />)
+    renderPage()
     const signup = await screen.findByText('Sign up')
     fireEvent.click(signup)
     expect(screen.getByLabelText('Name')).toBeInTheDocument()
@@ -44,7 +45,7 @@ describe('instance auth capabilities', () => {
 
   it('offers both configured login methods', async () => {
     vi.mocked(api.config).mockResolvedValue(publicConfig('both', false))
-    render(<AuthPage />)
+    renderPage()
     const keyButton = await screen.findByRole('button', { name: 'Access key' })
     expect(screen.getByRole('button', { name: 'Password' })).toBeInTheDocument()
     fireEvent.click(keyButton)
@@ -53,7 +54,7 @@ describe('instance auth capabilities', () => {
 
   it('shows the exact rescue command until the first admin exists', async () => {
     vi.mocked(api.config).mockResolvedValue({ ...publicConfig('password', false), setup_required: true })
-    render(<AuthPage />)
+    renderPage()
     expect(await screen.findByRole('heading', { name: 'Administrator setup required' })).toBeInTheDocument()
     expect(screen.getByText('docker compose run --rm backend fuze rescue bootstrap-admin')).toBeInTheDocument()
     expect(screen.queryByLabelText('Email')).not.toBeInTheDocument()

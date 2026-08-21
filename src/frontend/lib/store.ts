@@ -3,10 +3,12 @@ import type { PublicConfig, TrackSearchResult, UserPublic } from './types'
 
 interface Store {
   queue: TrackSearchResult[]; currentTrack: TrackSearchResult | null; isPlaying: boolean
+  queueMode: 'manual' | 'playlist'
   currentTime: number; duration: number; volume: number; isMuted: boolean
   isShuffled: boolean; isRepeating: boolean; isLoading: boolean; playbackError: string | null
   user: UserPublic | null; config: PublicConfig | null; hydrated: boolean
-  setQueue: (v: TrackSearchResult[]) => void; addToQueue: (v: TrackSearchResult) => void
+  setQueue: (v: TrackSearchResult[], mode?: 'manual' | 'playlist') => void; addToQueue: (v: TrackSearchResult) => void
+  updateQueueTrack: (key: string, patch: Partial<TrackSearchResult>) => void
   removeFromQueue: (key: string) => void; setCurrentTrack: (v: TrackSearchResult | null) => void
   setIsPlaying: (v: boolean) => void; togglePlay: () => void; setCurrentTime: (v: number) => void
   setDuration: (v: number) => void; setVolume: (v: number) => void; toggleMute: () => void
@@ -16,14 +18,18 @@ interface Store {
   hydrate: () => void; playNext: () => void; playPrev: () => void
 }
 
-const canQueue = (track: TrackSearchResult) => track.capability === 'acquire' && track.track_id !== null && track.availability === 'ready'
+const canQueue = (track: TrackSearchResult) => track.capability === 'acquire' && track.track_id !== null
 
 export const usePlayerStore = create<Store>((set, get) => ({
-  queue: [], currentTrack: null, isPlaying: false, currentTime: 0, duration: 0, volume: 0.7,
+  queue: [], currentTrack: null, isPlaying: false, queueMode: 'manual', currentTime: 0, duration: 0, volume: 0.7,
   isMuted: false, isShuffled: false, isRepeating: false, isLoading: false, playbackError: null,
   user: null, config: null, hydrated: false,
-  setQueue: (queue) => set({ queue }),
+  setQueue: (queue, queueMode = 'manual') => set({ queue: queue.filter(canQueue), queueMode }),
   addToQueue: (track) => set((state) => canQueue(track) && !state.queue.some((item) => item.key === track.key) ? { queue: [...state.queue, track] } : state),
+  updateQueueTrack: (key, patch) => set((state) => ({
+    queue: state.queue.map((track) => track.key === key ? { ...track, ...patch } : track),
+    currentTrack: state.currentTrack?.key === key ? { ...state.currentTrack, ...patch } : state.currentTrack,
+  })),
   removeFromQueue: (key) => set((state) => {
     const index = state.queue.findIndex((item) => item.key === key)
     const queue = state.queue.filter((item) => item.key !== key)
@@ -42,7 +48,7 @@ export const usePlayerStore = create<Store>((set, get) => ({
   setIsLoading: (isLoading) => set({ isLoading }), setPlaybackError: (playbackError) => set({ playbackError }),
   setUser: (user) => set({ user }),
   setConfig: (config) => set(config.features.playback ? { config } : {
-    config, queue: [], currentTrack: null, isPlaying: false, playbackError: null,
+    config, queue: [], queueMode: 'manual', currentTrack: null, isPlaying: false, playbackError: null,
   }),
   hydrate: () => {
     if (typeof window === 'undefined' || get().hydrated) return

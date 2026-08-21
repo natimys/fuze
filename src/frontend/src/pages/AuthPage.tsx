@@ -1,13 +1,11 @@
-'use client'
-
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { motion } from 'motion/react'
 import type { PublicConfig } from '@/lib/types'
 
 export default function AuthPage() {
-  const router = useRouter()
+  const navigate = useNavigate()
   const [isLogin, setIsLogin] = useState(true)
   const [method, setMethod] = useState<'password' | 'key'>('password')
   const [config, setConfig] = useState<PublicConfig | null>(null)
@@ -38,7 +36,7 @@ export default function AuthPage() {
         await api.auth.register({ name, email, password })
         await api.auth.login({ email, password })
       }
-      router.push('/')
+      navigate('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {

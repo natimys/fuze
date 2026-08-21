@@ -2,7 +2,7 @@
 
 import { usePlayerStore } from '@/lib/store'
 import { useRef, useCallback, useState } from 'react'
-import { audioContext } from './Player'
+import { audioContext } from './audioContext'
 
 function formatTime(seconds: number): string {
   if (!seconds || !isFinite(seconds)) return '0:00'

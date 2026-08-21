@@ -1,4 +1,5 @@
 import type { AdminSettings, AdminSettingsWrite, KeyLogin, PlaylistCreate, PlaylistDetail, PlaylistReorder, PlaylistSummary, PlaylistTrack, PlaylistUpdate, ProviderTest, PublicConfig, SystemStatus, TrackAcquireResponse, TrackRead, TrackSearchResponse, TrackSource, TrackStreamResponse, UserCreate, UserLogin, UserPublic, UserRegister, UsersResponse, UserUpdate } from './types'
+import type { ImportedTrack, ImportResult, ImportSource } from './types'
 
 const API_BASE = '/api/v1'
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
@@ -97,6 +98,9 @@ export const api = {
     addItem: (playlistId: number, trackId: number) => request<PlaylistTrack>(`/playlists/${playlistId}/items`, { method: 'POST', body: JSON.stringify({ track_id: trackId }) }),
     removeItem: (playlistId: number, itemId: number) => request<void>(`/playlists/${playlistId}/items/${itemId}`, { method: 'DELETE' }),
     reorder: (playlistId: number, data: PlaylistReorder) => request<PlaylistDetail>(`/playlists/${playlistId}/items/reorder`, { method: 'PUT', body: JSON.stringify(data) }),
+    yandexSources: (token: string) => request<ImportSource[]>('/playlists/imports/yandex/playlists', { method: 'POST', body: JSON.stringify({ token }) }),
+    importYandex: (token: string, playlistIds: string[]) => request<ImportResult>('/playlists/imports/yandex', { method: 'POST', body: JSON.stringify({ token, playlist_ids: playlistIds }) }),
+    importFile: (title: string, source: TrackSource, tracks: ImportedTrack[]) => request<ImportResult>('/playlists/imports/file', { method: 'POST', body: JSON.stringify({ title, source, tracks }) }),
   },
   admin: {
     settings: () => request<AdminSettings>('/admin/settings'),

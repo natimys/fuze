@@ -2,7 +2,7 @@
 
 import { usePlayerStore } from '@/lib/store'
 import { motion, AnimatePresence } from 'motion/react'
-import { X, Play } from '@phosphor-icons/react'
+import { X, Play, Spinner } from '@phosphor-icons/react'
 
 function formatDuration(ms: number | null): string {
   if (!ms) return '--:--'
@@ -14,6 +14,7 @@ function formatDuration(ms: number | null): string {
 
 export function Queue() {
   const queue = usePlayerStore((s) => s.queue)
+  const queueMode = usePlayerStore((s) => s.queueMode)
   const currentTrack = usePlayerStore((s) => s.currentTrack)
   const setCurrentTrack = usePlayerStore((s) => s.setCurrentTrack)
   const setIsPlaying = usePlayerStore((s) => s.setIsPlaying)
@@ -26,7 +27,7 @@ export function Queue() {
   return (
     <div className="flex flex-col min-w-0">
       <div className="text-[11px] font-medium tracking-wider uppercase text-text-muted mb-3">
-        Up Next
+        {queueMode === 'playlist' ? 'Playlist' : 'Up Next'}
       </div>
 
       {queue.length === 0 ? (
@@ -53,7 +54,7 @@ export function Queue() {
                       : 'hover:bg-hover'
                   }`}
                 >
-                  <button type="button" onClick={() => handlePlayTrack(track)} className="flex flex-1 min-w-0 items-center gap-3 px-1 py-1 text-left rounded focus-visible:outline focus-visible:outline-2" aria-label={`Play ${track.title}`}>
+                  <button type="button" disabled={track.availability === 'failed'} onClick={() => handlePlayTrack(track)} className="flex flex-1 min-w-0 items-center gap-3 px-1 py-1 text-left rounded focus-visible:outline focus-visible:outline-2 disabled:opacity-60" aria-label={`Play ${track.title}`}>
                     <span className="w-5 text-[11px] font-mono text-text-muted text-center flex-shrink-0">
                     {isActive ? (
                       <Play size={10} weight="fill" className="text-text-primary inline" />
@@ -69,9 +70,11 @@ export function Queue() {
                       {track.artist}
                     </div>
                   </div>
-                  <span className="text-xs font-mono text-text-muted">
-                    {formatDuration(track.duration_ms)}
-                  </span>
+                  {track.availability === 'queued' || track.availability === 'downloading' || track.availability === 'remote'
+                    ? <span className="flex items-center gap-1 text-xs text-text-muted"><Spinner size={13} className="animate-spin" />{track.availability === 'downloading' ? 'downloading' : 'queued'}</span>
+                    : track.availability === 'failed'
+                      ? <span className="max-w-28 truncate text-xs text-red-400" title={track.error_message ?? 'Download failed'}>{track.error_message ?? 'failed'}</span>
+                      : <span className="text-xs font-mono text-text-muted">{formatDuration(track.duration_ms)}</span>}
                   </button>
                   <button
                     onClick={() => {

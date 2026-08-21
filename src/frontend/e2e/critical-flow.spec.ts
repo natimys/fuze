@@ -107,6 +107,7 @@ test('login, refresh, acquire, playback, and playlists work as one browser flow'
   await page.getByRole('button', { name: 'Menu' }).click()
   await page.getByRole('link', { name: 'Playlists' }).click()
   await expect(page.getByRole('heading', { name: 'Playlists', exact: true })).toBeVisible()
+  await expect(page.getByRole('complementary', { name: 'Mini player' })).toContainText(track.title)
   await page.getByRole('button', { name: 'New playlist' }).click()
   await page.getByLabel('Name').fill('Focus Mix')
   await page.getByLabel(/Description/).fill('Deep work')
@@ -115,7 +116,8 @@ test('login, refresh, acquire, playback, and playlists work as one browser flow'
   await expect(page).toHaveURL(/\/player\/playlists\/1$/)
   await expect(page.getByRole('heading', { name: 'Focus Mix' })).toBeVisible()
   await page.getByRole('button', { name: 'Add tracks' }).click()
-  await page.getByRole('button', { name: new RegExp(track.title) }).click()
+  await page.getByLabel('Search query').fill('midnight')
+  await page.getByRole('button', { name: `Add ${track.title} to playlist` }).click()
   await expect(page.getByRole('list', { name: 'Playlist tracks' })).toContainText(track.title)
 
   expect(api.csrfHeaders).toContain('refresh-csrf')

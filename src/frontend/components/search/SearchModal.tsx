@@ -7,13 +7,18 @@ import { api } from '@/lib/api'
 import { usePlayerStore } from '@/lib/store'
 import type { TrackAvailability, TrackRead, TrackSearchResult } from '@/lib/types'
 
-interface Props { isOpen: boolean; onClose: () => void }
+interface Props {
+  isOpen: boolean
+  onClose: () => void
+  onTrackReady?: (track: TrackSearchResult) => Promise<void> | void
+  destination?: 'queue' | 'playlist'
+}
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve, reject) => {
   const id = window.setTimeout(resolve, ms)
   signal.addEventListener('abort', () => { clearTimeout(id); reject(new DOMException('Aborted', 'AbortError')) }, { once: true })
 })
 
-export function SearchModal({ isOpen, onClose }: Props) {
+export function SearchModal({ isOpen, onClose, onTrackReady, destination = 'queue' }: Props) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<TrackSearchResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -103,7 +108,17 @@ export function SearchModal({ isOpen, onClose }: Props) {
     acquireControllers.current.set(track.key, controller)
     setError(null); setBusy((value) => ({ ...value, [track.key]: 'queued' })); update(track.key, { availability: 'queued' })
     try {
-      const acquired = await api.tracks.acquire(track.source, track.source_id)
+      let acquired
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          acquired = await api.tracks.acquire(track.source, track.source_id)
+          break
+        } catch (reason) {
+          const transientProviderFailure = reason instanceof Error && 'status' in reason && reason.status === 503 && reason.message === 'provider_unavailable'
+          if (!transientProviderFailure || attempt >= 1) throw reason
+          await sleep(800, controller.signal)
+        }
+      }
       let status = acquired.status
       let detail: TrackRead | null = null
       const deadline = Date.now() + 15 * 60 * 1000
@@ -133,8 +148,13 @@ export function SearchModal({ isOpen, onClose }: Props) {
     if (busy[track.key]) return
     try {
       const ready = await makeReady(track)
-      addToQueue(ready)
-      if (play) { setCurrentTrack(ready); close() }
+      if (onTrackReady) {
+        await onTrackReady(ready)
+        close()
+      } else {
+        addToQueue(ready)
+        if (play) { setCurrentTrack(ready); close() }
+      }
     } catch (reason) {
       if (!(reason instanceof DOMException && reason.name === 'AbortError')) setError(reason instanceof Error ? reason.message : 'Unable to prepare track.')
     }
@@ -147,7 +167,7 @@ export function SearchModal({ isOpen, onClose }: Props) {
   const renderRows = (items: TrackSearchResult[]) => items.map((track) => {
     const state = busy[track.key] ?? track.availability
     return <div key={track.key} className="group flex items-center gap-3 p-2 rounded-lg hover:bg-hover">
-      <button type="button" onClick={() => void act(track, true)} disabled={Boolean(busy[track.key]) || track.capability === 'catalog'} className="flex flex-1 min-w-0 items-center gap-3 text-left disabled:opacity-60" aria-label={`${track.capability === 'catalog' ? 'Catalog result' : track.capability === 'external' ? 'Open' : 'Play'} ${track.title}`}>
+      <button type="button" onClick={() => void act(track, true)} disabled={Boolean(busy[track.key]) || track.capability === 'catalog'} className="flex flex-1 min-w-0 items-center gap-3 text-left disabled:opacity-60" aria-label={`${track.capability === 'catalog' ? 'Catalog result' : track.capability === 'external' ? 'Open' : destination === 'playlist' ? 'Add' : 'Play'} ${track.title}`}>
         <div className="w-10 h-10 rounded bg-surface-raised overflow-hidden flex items-center justify-center">{track.cover_url ? <img src={track.cover_url} alt="" className="w-full h-full object-cover" /> : <MusicNote size={17} className="text-text-muted" aria-hidden="true" />}</div>
         <div className="flex-1 min-w-0">
           <div className="text-sm text-text-primary truncate" title={track.title}>{track.title}</div>
@@ -156,13 +176,13 @@ export function SearchModal({ isOpen, onClose }: Props) {
         <span className="text-xs text-text-muted font-mono">{duration(track.duration_ms)}</span>
         {track.capability === 'catalog' ? null : state === 'queued' || state === 'downloading' ? <span className="flex items-center gap-1 text-xs text-text-muted"><Spinner className="animate-spin" />{state}</span> : state === 'ready' ? <Check className="text-green-400" /> : track.capability === 'external' ? <ArrowSquareOut /> : <Play />}
       </button>
-      {config?.features.playback && track.capability === 'acquire' && <button type="button" disabled={Boolean(busy[track.key])} onClick={() => void act(track, false)} aria-label={`Add ${track.title} to queue`} className="p-2 rounded-full text-text-secondary hover:bg-hover-strong disabled:opacity-40"><Plus size={15} /></button>}
+      {config?.features.playback && track.capability === 'acquire' && <button type="button" disabled={Boolean(busy[track.key])} onClick={() => void act(track, false)} aria-label={`Add ${track.title} to ${destination}`} className="p-2 rounded-full text-text-secondary hover:bg-hover-strong disabled:opacity-40"><Plus size={15} /></button>}
     </div>
   })
 
   return <AnimatePresence>{isOpen && <>
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60" onClick={close} aria-hidden="true" />
-    <motion.div ref={panelRef} role="dialog" aria-modal="true" aria-label="Search music" initial={{ opacity: 0, scale: .98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="fixed top-[max(1rem,8%)] left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-[560px]">
+    <motion.div ref={panelRef} role="dialog" aria-modal="true" aria-label={destination === 'playlist' ? 'Search music for playlist' : 'Search music'} initial={{ opacity: 0, scale: .98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="fixed top-[max(1rem,8%)] left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-[560px]">
       <div className="bg-surface rounded-xl border border-border shadow-2xl overflow-hidden">
         <div className="flex items-center gap-3 px-4 h-14 border-b border-border">
           <MagnifyingGlass size={18} className="text-text-muted" />

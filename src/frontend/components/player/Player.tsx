@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { usePlayerStore } from '@/lib/store'
 import { api } from '@/lib/api'
 import { Sidebar } from '@/components/sidebar/Sidebar'
@@ -8,17 +8,13 @@ import { SearchModal } from '@/components/search/SearchModal'
 import { NowPlaying } from './NowPlaying'
 import { Queue } from './Queue'
 import { ControlStrip } from './ControlStrip'
+import { audioContext } from './audioContext'
 import {
   List,
   MagnifyingGlass,
   Command,
 } from '@phosphor-icons/react'
 import { motion } from 'motion/react'
-
-export const audioContext = {
-  current: null as HTMLAudioElement | null,
-  isDragging: false,
-}
 
 export function Player() {
   const [authState, setAuthState] = useState<'checking' | 'ready' | 'denied'>('checking')
@@ -32,19 +28,12 @@ export function Player() {
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const queue = usePlayerStore((s) => s.queue)
   const volume = usePlayerStore((s) => s.volume)
-  const isMuted = usePlayerStore((s) => s.isMuted)
   const setIsPlaying = usePlayerStore((s) => s.setIsPlaying)
-  const setCurrentTrack = usePlayerStore((s) => s.setCurrentTrack)
   const setCurrentTime = usePlayerStore((s) => s.setCurrentTime)
-  const setDuration = usePlayerStore((s) => s.setDuration)
-  const setIsLoading = usePlayerStore((s) => s.setIsLoading)
-  const setPlaybackError = usePlayerStore((s) => s.setPlaybackError)
-  const isRepeating = usePlayerStore((s) => s.isRepeating)
   const hydrate = usePlayerStore((s) => s.hydrate)
   const setVolume = usePlayerStore((s) => s.setVolume)
   const playNext = usePlayerStore((s) => s.playNext)
   const playPrev = usePlayerStore((s) => s.playPrev)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     hydrate()
@@ -108,108 +97,6 @@ export function Player() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [config, currentTrack, isPlaying, volume, queue.length, setIsPlaying, setVolume, setCurrentTime, playNext, playPrev])
-
-  useEffect(() => {
-    if (!config?.features.playback) return
-    if (!audioRef.current) {
-      const audio = new Audio()
-      audioRef.current = audio
-      audioContext.current = audio
-
-      const onTime = () => {
-        if (!audioContext.isDragging) {
-          setCurrentTime(audio.currentTime)
-        }
-      }
-      const onMetadata = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
-      const onError = () => {
-        if (!audio.hasAttribute('src')) return
-        setIsPlaying(false); setIsLoading(false); setPlaybackError('Playback failed. Retry the track.')
-      }
-      audio.addEventListener('timeupdate', onTime)
-      audio.addEventListener('loadedmetadata', onMetadata)
-      audio.addEventListener('error', onError)
-      return () => {
-        audio.pause(); audio.removeAttribute('src'); audio.load()
-        audio.removeEventListener('timeupdate', onTime)
-        audio.removeEventListener('loadedmetadata', onMetadata)
-        audio.removeEventListener('error', onError)
-        audioContext.current = null
-        audioRef.current = null
-      }
-    }
-  }, [config, setCurrentTime, setDuration, setIsPlaying, setIsLoading, setPlaybackError])
-
-  useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
-    const onEnded = () => {
-      if (isRepeating) {
-        audio.currentTime = 0
-        void audio.play().then(() => setIsPlaying(true)).catch(() => setPlaybackError('Playback could not restart.'))
-      } else playNext()
-    }
-    audio.addEventListener('ended', onEnded)
-    return () => audio.removeEventListener('ended', onEnded)
-  }, [isRepeating, playNext, setIsPlaying, setPlaybackError])
-
-  useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
-    audio.pause()
-    audio.removeAttribute('src')
-    audio.load()
-    setIsPlaying(false)
-    setCurrentTime(0)
-    setDuration(0)
-    setPlaybackError(null)
-    if (!currentTrack?.track_id || currentTrack.availability !== 'ready') return
-    const controller = new AbortController()
-    setIsLoading(true)
-    void api.tracks.stream(currentTrack.track_id, controller.signal).then(async (res) => {
-      if (controller.signal.aborted) return
-      audio.src = res.url
-      audio.load()
-      await audio.play()
-      if (!controller.signal.aborted) setIsPlaying(true)
-    }).catch((error: unknown) => {
-      if (!controller.signal.aborted) setPlaybackError(error instanceof Error ? error.message : 'Unable to start playback.')
-    }).finally(() => { if (!controller.signal.aborted) setIsLoading(false) })
-    return () => controller.abort()
-  }, [currentTrack, setIsPlaying, setCurrentTime, setDuration, setIsLoading, setPlaybackError])
-
-  useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
-    if (isPlaying) {
-      void audio.play().then(() => setPlaybackError(null)).catch(() => {
-        setIsPlaying(false)
-        setPlaybackError('Playback was blocked or the stream is unavailable.')
-      })
-    } else {
-      audio.pause()
-    }
-  }, [isPlaying, setIsPlaying, setPlaybackError])
-
-  useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
-    audio.volume = isMuted ? 0 : volume
-  }, [volume, isMuted])
-
-  useEffect(() => {
-    if (queue.length === 0 && currentTrack) {
-      const audio = audioRef.current
-      if (audio) {
-        audio.pause()
-        audio.currentTime = 0
-      }
-      setCurrentTrack(null)
-      setIsPlaying(false)
-      setCurrentTime(0)
-      setDuration(0)
-    }
-  }, [queue.length, currentTrack, setCurrentTrack, setIsPlaying, setCurrentTime, setDuration])
 
   if (authState !== 'ready') {
     return <div className="flex h-dvh items-center justify-center bg-bg text-sm text-text-muted" role="status">{authState === 'checking' ? 'Checking session…' : 'Redirecting…'}</div>

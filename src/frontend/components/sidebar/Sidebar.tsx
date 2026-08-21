@@ -2,18 +2,18 @@
 
 import { usePlayerStore } from '@/lib/store'
 import { api } from '@/lib/api'
-import { usePathname, useRouter } from 'next/navigation'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import {
   House,
   ListMagnifyingGlass,
   Heart,
   Gear,
+  ShieldCheck,
   SignOut,
   MusicNote,
 } from '@phosphor-icons/react'
 import { motion, AnimatePresence } from 'motion/react'
-import Link from 'next/link'
 
 interface SidebarProps {
   isOpen: boolean
@@ -28,8 +28,8 @@ const navItems = [
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const user = usePlayerStore((s) => s.user)
   const setUser = usePlayerStore((s) => s.setUser)
-  const router = useRouter()
-  const pathname = usePathname()
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [logoutError, setLogoutError] = useState<string | null>(null)
   const panelRef = useRef<HTMLElement>(null)
 
@@ -57,7 +57,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     try {
       await api.auth.logout()
       setUser(null)
-      router.push('/auth')
+      navigate('/auth')
     } catch (error) {
       setLogoutError(error instanceof Error ? error.message : 'Sign out failed. Please retry.')
     }
@@ -102,19 +102,20 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
             <nav className="flex-1 py-3 px-3">
               {navItems.map((item) => (
-                <a
+                <Link
                   key={item.label}
-                  href={item.href}
+                  to={item.href}
                   aria-current={pathname === item.href || (item.href !== '/player' && pathname.startsWith(`${item.href}/`)) ? 'page' : undefined}
                   onClick={onClose}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-text-primary ${pathname === item.href || (item.href !== '/player' && pathname.startsWith(`${item.href}/`)) ? 'bg-hover-strong text-text-primary' : 'text-text-secondary hover:text-text-primary hover:bg-hover'}`}
                 >
                   <item.icon size={18} weight="regular" />
                   <span>{item.label}</span>
-                </a>
+                </Link>
               ))}
               <div className="mt-2 flex items-center gap-3 px-3 py-2 text-xs text-text-muted" aria-disabled="true"><Heart size={16} aria-hidden="true" /><span>Favorites <span className="sr-only">is </span>(coming later)</span></div>
-              {user?.role === 'admin' && <Link href="/player/settings" onClick={onClose} aria-current={pathname.startsWith('/player/settings') ? 'page' : undefined} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${pathname.startsWith('/player/settings') ? 'bg-hover-strong text-text-primary' : 'text-text-secondary hover:bg-hover hover:text-text-primary'}`}><Gear size={18} /><span>Settings</span></Link>}
+              <Link to="/player/settings" onClick={onClose} aria-current={pathname === '/player/settings' ? 'page' : undefined} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${pathname === '/player/settings' ? 'bg-hover-strong text-text-primary' : 'text-text-secondary hover:bg-hover hover:text-text-primary'}`}><Gear size={18} /><span>Settings</span></Link>
+              {user?.role === 'admin' && <Link to="/player/admin-settings" onClick={onClose} aria-current={pathname.startsWith('/player/admin-settings') ? 'page' : undefined} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${pathname.startsWith('/player/admin-settings') ? 'bg-hover-strong text-text-primary' : 'text-text-secondary hover:bg-hover hover:text-text-primary'}`}><ShieldCheck size={18} /><span>Admin Settings</span></Link>}
             </nav>
 
             <div className="p-3 border-t border-border">
