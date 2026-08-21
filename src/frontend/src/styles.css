@@ -166,3 +166,14 @@ input[type="range"]::-moz-range-thumb {
 .animate-pulse {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+html, body { min-height: 100%; }
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  overscroll-behavior: none;
+}
+@media (hover: none), (pointer: coarse) {
+  button, a, input, select { touch-action: manipulation; }
+}

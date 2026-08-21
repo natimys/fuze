@@ -1,5 +1,5 @@
-import { Player } from '@/components/player/Player'
+import { ListeningView } from '@/components/player/ListeningView'
 
 export default function PlayerPage() {
-  return <Player />
+  return <ListeningView />
 }
