@@ -1,3 +1,6 @@
+from hashlib import sha256
+import secrets
+
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
@@ -20,11 +23,15 @@ class UserService:
     async def get_user_by_email(self, email: str) -> User | None:
         return await self.repository.get_user_by_email(self._normalize_email(email))
 
-    async def list_users(self, page: int = 1, size: int = 10, search: str = "") -> tuple[list[User], int]:
+    async def list_users(
+        self, page: int = 1, size: int = 10, search: str = ""
+    ) -> tuple[list[User], int]:
         skip = (page - 1) * size
         search = search.strip()[:100]
         if search:
-            users = await self.repository.get_users(skip=skip, limit=size, search=search)
+            users = await self.repository.get_users(
+                skip=skip, limit=size, search=search
+            )
             total = await self.repository.count_users(search=search)
         else:
             users = await self.repository.get_users(skip=skip, limit=size)
@@ -46,6 +53,26 @@ class UserService:
         if user_exists:
             raise UserAlreadyExists()
         return await self._create_user(email, name, password, role)
+
+    async def create_key_user(
+        self, *, name: str, role: UserRole, label: str
+    ) -> tuple[User, str]:
+        secret = f"fuze_{secrets.token_urlsafe(32)}"
+        try:
+            user = await self.repository.create_user(
+                email=None, name=name.strip(), password=None, role=role
+            )
+            await self.repository.create_access_key(
+                user_id=user.id,
+                label=label.strip(),
+                key_hash=sha256(secret.encode("utf-8")).hexdigest(),
+            )
+            await self.repository.commit()
+            await self.repository.refresh(user)
+            return user, secret
+        except IntegrityError:
+            await self.repository.rollback()
+            raise UserAlreadyExists() from None
 
     async def update_user(self, user_id: int, data: UserUpdate) -> User | None:
         user = await self.repository.get_user_by_id(user_id)

@@ -4,7 +4,14 @@ from core.enums import UserRole
 from .dependencies import get_user_service
 from core.dependencies import require_role
 from .module import module
-from .schemas import UserCreate, UserRead, UsersResponse, UserUpdate
+from .schemas import (
+    KeyUserCreate,
+    KeyUserCreated,
+    UserCreate,
+    UserRead,
+    UsersResponse,
+    UserUpdate,
+)
 from .service import UserService
 
 router = APIRouter(
@@ -34,6 +41,17 @@ async def get_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+
+@router.post("/key", response_model=KeyUserCreated, status_code=201)
+async def create_key_user(
+    data: KeyUserCreate,
+    user_service: UserService = Depends(get_user_service),
+):
+    user, access_key = await user_service.create_key_user(
+        name=data.name, role=data.role, label=data.label
+    )
+    return KeyUserCreated(user=UserRead.model_validate(user), access_key=access_key)
 
 
 @router.post("", response_model=UserRead, status_code=201)

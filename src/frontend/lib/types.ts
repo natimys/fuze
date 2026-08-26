@@ -45,6 +45,8 @@ export interface SystemStatus {
 
 export interface UsersResponse { data: UserRead[]; total: number; page: number; size: number }
 export interface UserCreate { name: string; email: string; password: string; role: UserRole }
+export interface KeyUserCreate { name: string; role: UserRole; label?: string }
+export interface KeyUserCreated { user: UserPublic; access_key: string }
 export interface UserUpdate { name?: string; email?: string; password?: string; role?: UserRole; is_active?: boolean }
 export interface ProviderTest { status: 'ok' | 'disabled' | 'unavailable' | 'not_configured'; latency_ms: number; message: string }
 

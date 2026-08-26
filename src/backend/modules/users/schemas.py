@@ -30,6 +30,22 @@ class UserCreate(BaseModel):
         return value.strip().lower()
 
 
+class KeyUserCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    role: UserRole = UserRole.USER
+    label: str = Field(default="initial", min_length=1, max_length=100)
+
+    @field_validator("name", "label", mode="before")
+    @classmethod
+    def strip_text(cls, value: str) -> str:
+        return value.strip()
+
+
+class KeyUserCreated(BaseModel):
+    user: UserRead
+    access_key: str
+
+
 class UserUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     email: EmailStr | None = None

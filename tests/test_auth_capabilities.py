@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from types import SimpleNamespace
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modules.auth.models import AccessKey, AuthSession
@@ -98,3 +98,58 @@ async def test_key_login_disabled_in_password_mode(client):
     )
     assert response.status_code == 403
     assert response.json()["detail"] == "key_login_disabled"
+
+
+async def test_admin_can_generate_key_user_on_site(client, test_engine):
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "name": "Admin",
+            "email": "admin@example.com",
+            "password": "long-enough-password",
+        },
+    )
+    async with AsyncSession(test_engine) as db:
+        await db.execute(
+            update(User).where(User.email == "admin@example.com").values(role="ADMIN")
+        )
+        await db.commit()
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": "long-enough-password"},
+    )
+    assert login.status_code == 200
+
+    created = await client.post(
+        "/api/v1/users/key",
+        json={"name": "Invited listener", "role": "user", "label": "web invite"},
+    )
+    assert created.status_code == 201
+    payload = created.json()
+    assert payload["user"]["email"] is None
+    assert payload["access_key"].startswith("fuze_")
+
+    async with AsyncSession(test_engine) as db:
+        stored = (
+            await db.execute(
+                select(AccessKey).where(AccessKey.user_id == payload["user"]["id"])
+            )
+        ).scalar_one()
+        assert stored.label == "web invite"
+        assert stored.key_hash == sha256(payload["access_key"].encode()).hexdigest()
+
+    from modules.admin.service import invalidate_config_cache
+
+    async with test_engine.begin() as conn:
+        await conn.execute(
+            text(
+                "UPDATE instance_settings SET settings = jsonb_set(settings, '{auth,mode}', '\"key\"'::jsonb)"
+            )
+        )
+    invalidate_config_cache()
+    await client.post("/api/v1/auth/logout")
+    key_login = await client.post(
+        "/api/v1/auth/key-login", json={"key": payload["access_key"]}
+    )
+    assert key_login.status_code == 200
+    assert key_login.json()["name"] == "Invited listener"

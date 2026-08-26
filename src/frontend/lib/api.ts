@@ -1,4 +1,4 @@
-import type { AdminSettings, AdminSettingsWrite, KeyLogin, PlaylistCreate, PlaylistDetail, PlaylistReorder, PlaylistSummary, PlaylistTrack, PlaylistUpdate, ProviderTest, PublicConfig, SystemStatus, TrackAcquireResponse, TrackDownloadBulkResponse, TrackDownloadDescriptor, TrackRead, TrackSearchResponse, TrackSource, TrackStreamResponse, UserCreate, UserLogin, UserPublic, UserRegister, UsersResponse, UserUpdate } from './types'
+import type { AdminSettings, AdminSettingsWrite, KeyLogin, KeyUserCreate, KeyUserCreated, PlaylistCreate, PlaylistDetail, PlaylistReorder, PlaylistSummary, PlaylistTrack, PlaylistUpdate, ProviderTest, PublicConfig, SystemStatus, TrackAcquireResponse, TrackDownloadBulkResponse, TrackDownloadDescriptor, TrackRead, TrackSearchResponse, TrackSource, TrackStreamResponse, UserCreate, UserLogin, UserPublic, UserRegister, UsersResponse, UserUpdate } from './types'
 import type { ImportedTrack, ImportResult, ImportSource } from './types'
 import { getApiBaseUrl } from '@/services/runtimeConfig'
 
@@ -111,6 +111,7 @@ export const api = {
     testProvider: (provider: 'youtube' | 'yandex' | 'spotify') => request<ProviderTest>(`/admin/providers/${provider}/test`, { method: 'POST' }),
     users: (page = 1, size = 20, search = '') => request<UsersResponse>(`/users?page=${page}&size=${size}&search=${encodeURIComponent(search)}`),
     createUser: (data: UserCreate) => request<UserPublic>('/users', { method: 'POST', body: JSON.stringify(data) }),
+    createKeyUser: (data: KeyUserCreate) => request<KeyUserCreated>('/users/key', { method: 'POST', body: JSON.stringify(data) }),
     updateUser: (id: number, data: UserUpdate) => request<UserPublic>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   },
 }
