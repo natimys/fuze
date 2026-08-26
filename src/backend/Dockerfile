@@ -36,6 +36,7 @@ LABEL org.opencontainers.image.title="Fuze backend" \
 WORKDIR /app
 
 RUN apt-get update \
+    && apt-get upgrade --yes \
     && apt-get install --yes --no-install-recommends \
         "ffmpeg=${FFMPEG_VERSION}" \
     && rm -rf /var/lib/apt/lists/* \
