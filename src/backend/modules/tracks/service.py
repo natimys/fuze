@@ -4,12 +4,13 @@ import tempfile
 import unicodedata
 import uuid
 import inspect
+from datetime import UTC, datetime, timedelta
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 
 from integrations.cache import cache_get, cache_set
-from integrations.storage import get_presigned_url, upload_file
+from integrations.storage import get_object_metadata, get_presigned_url, upload_file
 from integrations.youtube import download_audio_to_file, search_youtube
 from core.settings import get_settings
 from core.instance_config import get_fuze_config
@@ -43,6 +44,18 @@ _default_search_cached = search_cached
 class AcquireResult:
     track: Track
     newly_queued: bool
+
+
+@dataclass(frozen=True)
+class DownloadDescriptor:
+    track_id: int
+    url: str
+    content_type: str
+    content_length: int
+    etag: str | None
+    checksum: str | None
+    expires_at: datetime
+    media_version: str
 
 
 def _normalize(value: str) -> str:
@@ -264,6 +277,37 @@ class TracksService:
             return await get_presigned_url(track.storage_key)
         except Exception as exc:
             raise TrackDependencyUnavailable("storage_unavailable") from exc
+
+    async def get_download_descriptor(self, track_id: int) -> DownloadDescriptor:
+        if self.enforce_config and not (await self._snapshot()).config.features.playback:
+            raise TrackCapabilityDisabled("playback_disabled")
+        track = await self.get_track(track_id)
+        if track.download_status != TrackDownloadStatus.READY or not track.storage_key:
+            raise TrackNotReady(track.download_error_code or track.download_status.value)
+        ttl = get_settings().MINIO_PRESIGNED_TTL_SECONDS
+        try:
+            metadata, url = await asyncio.gather(
+                get_object_metadata(track.storage_key),
+                get_presigned_url(track.storage_key, expires_seconds=ttl),
+            )
+        except Exception as exc:
+            raise TrackDependencyUnavailable("storage_unavailable") from exc
+        version = metadata.checksum or metadata.etag or f"track-{track.id}"
+        return DownloadDescriptor(
+            track_id=track.id,
+            url=url,
+            content_type=metadata.content_type,
+            content_length=metadata.content_length,
+            etag=metadata.etag,
+            checksum=metadata.checksum,
+            expires_at=datetime.now(UTC) + timedelta(seconds=ttl),
+            media_version=version,
+        )
+
+    async def get_download_descriptors(self, track_ids: list[int]) -> list[DownloadDescriptor]:
+        # Preserve request order while avoiding duplicate object-store calls.
+        unique_ids = list(dict.fromkeys(track_ids))
+        return await asyncio.gather(*(self.get_download_descriptor(track_id) for track_id in unique_ids))
 
 
 class TrackDownloadProcessor:

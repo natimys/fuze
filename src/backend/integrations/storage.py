@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+from dataclasses import dataclass
 from pathlib import Path
 
 import aioboto3
@@ -11,6 +12,14 @@ from core.settings import get_settings
 _session: aioboto3.Session | None = None
 _bucket_ready = False
 _bucket_lock = asyncio.Lock()
+
+
+@dataclass(frozen=True)
+class ObjectMetadata:
+    content_type: str
+    content_length: int
+    etag: str | None
+    checksum: str | None
 
 
 def _get_session() -> aioboto3.Session:
@@ -122,6 +131,19 @@ async def object_exists(object_name: str) -> bool:
         if _is_missing(exc):
             return False
         raise
+
+
+async def get_object_metadata(object_name: str) -> ObjectMetadata:
+    settings = get_settings()
+    async with _get_session().client(**_build_client_kwargs()) as client:
+        result = await client.head_object(Bucket=settings.MINIO_BUCKET, Key=object_name)
+    metadata = result.get("Metadata", {})
+    return ObjectMetadata(
+        content_type=str(result.get("ContentType") or "application/octet-stream"),
+        content_length=int(result.get("ContentLength", 0)),
+        etag=str(result["ETag"]).strip('"') if result.get("ETag") else None,
+        checksum=metadata.get("sha256"),
+    )
 
 
 async def list_object_keys() -> set[str]:

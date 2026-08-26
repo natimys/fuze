@@ -72,6 +72,25 @@ class TrackStreamResponse(BaseModel):
     url: str
 
 
+class TrackDownloadDescriptor(BaseModel):
+    track_id: int
+    url: str
+    content_type: str
+    content_length: int = Field(gt=0)
+    etag: str | None = None
+    checksum: str | None = None
+    expires_at: datetime
+    media_version: str
+
+
+class TrackDownloadBulkRequest(BaseModel):
+    track_ids: list[int] = Field(min_length=1, max_length=500)
+
+
+class TrackDownloadBulkResponse(BaseModel):
+    data: list[TrackDownloadDescriptor]
+
+
 class TrackAcquireResponse(BaseModel):
     status: TrackDownloadStatus
     track_id: int
