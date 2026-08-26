@@ -98,6 +98,9 @@ test('login, refresh, acquire, playback, and playlists work as one browser flow'
   await expect(page.getByText('No track selected')).toBeVisible()
   expect(api.calls).toContain('POST /auth/refresh')
 
+  await expect(page.getByRole('dialog', { name: 'Вся ваша музыка — в одном месте' })).toBeVisible()
+  await page.getByRole('button', { name: 'Начать пользоваться Fuze' }).click()
+
   await page.getByRole('button', { name: 'Search ⌘ K' }).click()
   await page.getByLabel('Search query').fill('midnight')
   await page.getByRole('button', { name: `Play ${track.title}` }).click()
@@ -108,7 +111,9 @@ test('login, refresh, acquire, playback, and playlists work as one browser flow'
   await page.screenshot({ path: '../../artifacts/fuze-listening-1440x900.png', fullPage: true })
 
   await page.getByRole('button', { name: /Collection/ }).click()
-  await expect(page.getByRole('heading', { name: 'Playlists', exact: true })).toBeVisible()
+  const playlistsHeading = page.getByRole('heading', { name: 'Playlists', exact: true })
+  await expect(playlistsHeading).toHaveCount(1)
+  await expect(playlistsHeading).toBeVisible()
   await expect(page.getByRole('complementary', { name: 'Mini player' })).toContainText(track.title)
   await page.getByRole('button', { name: 'New playlist' }).click()
   await page.getByLabel('Name').fill('Focus Mix')
@@ -116,7 +121,9 @@ test('login, refresh, acquire, playback, and playlists work as one browser flow'
   await page.getByRole('button', { name: 'Create playlist' }).click()
 
   await expect(page).toHaveURL(/\/player\/playlists\/1$/)
-  await expect(page.getByRole('heading', { name: 'Focus Mix' })).toBeVisible()
+  const playlistHeading = page.getByRole('heading', { name: 'Focus Mix' })
+  await expect(playlistHeading).toHaveCount(1)
+  await expect(playlistHeading).toBeVisible()
   await page.getByRole('button', { name: 'Add tracks' }).click()
   await page.getByLabel('Search query').fill('midnight')
   await page.getByRole('button', { name: `Add ${track.title} to playlist` }).click()

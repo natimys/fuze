@@ -17,6 +17,8 @@ LABEL org.opencontainers.image.title="Fuze frontend" \
       org.opencontainers.image.source="https://github.com/natimys/fuze" \
       org.opencontainers.image.created="$CREATED"
 
+RUN apk upgrade --no-cache
+
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 3000
