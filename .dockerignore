@@ -11,6 +11,11 @@ __pycache__
 src/frontend/.env.local
 src/frontend/node_modules
 src/frontend/.next
+src/frontend/dist
+src/frontend/src-tauri
+src/frontend/coverage
+src/frontend/playwright-report
+src/frontend/test-results
 src/backend/integrations/yt_data.json
 src/backend/bin
 src/backend/Dockerfile

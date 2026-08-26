@@ -88,6 +88,7 @@ async function installApi(page: Page) {
 
 test('login, refresh, acquire, playback, and playlists work as one browser flow', async ({ page }) => {
   const api = await installApi(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
 
   await page.goto('/auth')
   await page.getByLabel('Email').fill('ada@example.com')
@@ -97,16 +98,18 @@ test('login, refresh, acquire, playback, and playlists work as one browser flow'
   await expect(page.getByText('No track selected')).toBeVisible()
   expect(api.calls).toContain('POST /auth/refresh')
 
-  await page.getByRole('button', { name: /Search/ }).click()
+  await page.getByRole('button', { name: 'Search ⌘ K' }).click()
   await page.getByLabel('Search query').fill('midnight')
   await page.getByRole('button', { name: `Play ${track.title}` }).click()
   await expect(page.getByRole('heading', { name: track.title })).toBeVisible({ timeout: 10_000 })
   await expect.poll(() => api.calls).toContain(`GET /tracks/${track.id}`)
   await expect.poll(() => api.calls).toContain(`GET /tracks/${track.id}/stream`)
+  await page.keyboard.press('Escape')
+  await page.screenshot({ path: '../../artifacts/fuze-listening-1440x900.png', fullPage: true })
 
-  await page.getByRole('button', { name: 'Menu' }).click()
-  await page.getByRole('link', { name: 'Playlists' }).click()
+  await page.getByRole('button', { name: /Collection/ }).click()
   await expect(page.getByRole('heading', { name: 'Playlists', exact: true })).toBeVisible()
+  await expect(page.getByRole('complementary', { name: 'Mini player' })).toContainText(track.title)
   await page.getByRole('button', { name: 'New playlist' }).click()
   await page.getByLabel('Name').fill('Focus Mix')
   await page.getByLabel(/Description/).fill('Deep work')
@@ -115,7 +118,8 @@ test('login, refresh, acquire, playback, and playlists work as one browser flow'
   await expect(page).toHaveURL(/\/player\/playlists\/1$/)
   await expect(page.getByRole('heading', { name: 'Focus Mix' })).toBeVisible()
   await page.getByRole('button', { name: 'Add tracks' }).click()
-  await page.getByRole('button', { name: new RegExp(track.title) }).click()
+  await page.getByLabel('Search query').fill('midnight')
+  await page.getByRole('button', { name: `Add ${track.title} to playlist` }).click()
   await expect(page.getByRole('list', { name: 'Playlist tracks' })).toContainText(track.title)
 
   expect(api.csrfHeaders).toContain('refresh-csrf')

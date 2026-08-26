@@ -89,3 +89,39 @@ class PlaylistItemRead(BaseModel):
 
 class PlaylistDetail(PlaylistSummary):
     items: list[PlaylistItemRead]
+
+
+class ImportSource(BaseModel):
+    id: str
+    title: str
+    tracks_count: int = 0
+
+
+class ImportConnect(BaseModel):
+    token: str = Field(min_length=10, max_length=4096)
+
+
+class ImportSelection(BaseModel):
+    token: str = Field(min_length=10, max_length=4096)
+    playlist_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class ImportedTrack(BaseModel):
+    source_id: str = Field(min_length=1, max_length=128)
+    title: str = Field(min_length=1, max_length=255)
+    artist: str = Field(min_length=1, max_length=255)
+    album: str | None = Field(default=None, max_length=255)
+    year: int | None = None
+    duration_ms: int | None = Field(default=None, gt=0)
+    cover_url: str | None = Field(default=None, max_length=512)
+
+
+class FilePlaylistImport(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+    source: str = Field(pattern="^(spotify|yandex|youtube)$")
+    tracks: list[ImportedTrack] = Field(min_length=1, max_length=10000)
+
+
+class ImportResult(BaseModel):
+    playlists_created: int
+    tracks_added: int

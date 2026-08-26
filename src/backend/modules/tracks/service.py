@@ -4,12 +4,13 @@ import tempfile
 import unicodedata
 import uuid
 import inspect
+from datetime import UTC, datetime, timedelta
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 
 from integrations.cache import cache_get, cache_set
-from integrations.storage import get_presigned_url, upload_file
+from integrations.storage import get_object_metadata, get_presigned_url, upload_file
 from integrations.youtube import download_audio_to_file, search_youtube
 from core.settings import get_settings
 from core.instance_config import get_fuze_config
@@ -45,13 +46,31 @@ class AcquireResult:
     newly_queued: bool
 
 
+@dataclass(frozen=True)
+class DownloadDescriptor:
+    track_id: int
+    url: str
+    content_type: str
+    content_length: int
+    etag: str | None
+    checksum: str | None
+    expires_at: datetime
+    media_version: str
+
+
 def _normalize(value: str) -> str:
     value = unicodedata.normalize("NFKD", value).casefold()
     return " ".join(re.findall(r"[\w]+", value))
 
 
 def _similarity(left: str, right: str) -> float:
-    return SequenceMatcher(None, _normalize(left), _normalize(right)).ratio()
+    normalized_left = _normalize(left)
+    normalized_right = _normalize(right)
+    if normalized_left and normalized_right and (
+        normalized_left in normalized_right or normalized_right in normalized_left
+    ):
+        return 1.0
+    return SequenceMatcher(None, normalized_left, normalized_right).ratio()
 
 
 def _validate_item(item: SearchItem) -> None:
@@ -162,12 +181,6 @@ class TracksService:
         config = snapshot.config
         if not config.features.playback:
             raise TrackCapabilityDisabled("playback_disabled")
-        if source == TrackSource.SPOTIFY.value:
-            raise InvalidTrackSource("spotify_is_external_only")
-        if self.enforce_config and source in {"youtube", "yandex", "spotify"} and not getattr(
-            config.providers, source
-        ):
-            raise TrackCapabilityDisabled("provider_disabled")
         provider = PROVIDERS.get(source)
         if provider is None:
             raise InvalidTrackSource("unsupported_source")
@@ -189,6 +202,14 @@ class TracksService:
                     existing.download_error_code or "max_attempts_exhausted"
                 )
             return AcquireResult(track=existing, newly_queued=should_enqueue)
+        if self.enforce_config and source in {"youtube", "yandex", "spotify"} and not getattr(
+            config.providers, source
+        ):
+            raise TrackCapabilityDisabled("provider_disabled")
+        if source == TrackSource.SPOTIFY.value:
+            # Spotify search results remain external-only, but imported playlist
+            # metadata already in our database can be resolved by the worker.
+            raise InvalidTrackSource("spotify_is_external_only")
         try:
             provider_secrets = {
                 **snapshot.secrets,
@@ -257,6 +278,37 @@ class TracksService:
         except Exception as exc:
             raise TrackDependencyUnavailable("storage_unavailable") from exc
 
+    async def get_download_descriptor(self, track_id: int) -> DownloadDescriptor:
+        if self.enforce_config and not (await self._snapshot()).config.features.playback:
+            raise TrackCapabilityDisabled("playback_disabled")
+        track = await self.get_track(track_id)
+        if track.download_status != TrackDownloadStatus.READY or not track.storage_key:
+            raise TrackNotReady(track.download_error_code or track.download_status.value)
+        ttl = get_settings().MINIO_PRESIGNED_TTL_SECONDS
+        try:
+            metadata, url = await asyncio.gather(
+                get_object_metadata(track.storage_key),
+                get_presigned_url(track.storage_key, expires_seconds=ttl),
+            )
+        except Exception as exc:
+            raise TrackDependencyUnavailable("storage_unavailable") from exc
+        version = metadata.checksum or metadata.etag or f"track-{track.id}"
+        return DownloadDescriptor(
+            track_id=track.id,
+            url=url,
+            content_type=metadata.content_type,
+            content_length=metadata.content_length,
+            etag=metadata.etag,
+            checksum=metadata.checksum,
+            expires_at=datetime.now(UTC) + timedelta(seconds=ttl),
+            media_version=version,
+        )
+
+    async def get_download_descriptors(self, track_ids: list[int]) -> list[DownloadDescriptor]:
+        # Preserve request order while avoiding duplicate object-store calls.
+        unique_ids = list(dict.fromkeys(track_ids))
+        return await asyncio.gather(*(self.get_download_descriptor(track_id) for track_id in unique_ids))
+
 
 class TrackDownloadProcessor:
     """Worker-only media pipeline; API requests never call this class."""
@@ -314,7 +366,7 @@ class TrackDownloadProcessor:
     async def _resolve_youtube_url(self, track: Track) -> str:
         if track.source == TrackSource.YOUTUBE:
             return track.yt_url or f"https://www.youtube.com/watch?v={track.source_id}"
-        key = f"yt_match:v2:{_normalize(track.artist)}:{_normalize(track.title)}"
+        key = f"yt_match:v4:{_normalize(track.artist)}:{_normalize(track.title)}"
         try:
             cached = await cache_get(key)
         except Exception:
@@ -341,7 +393,10 @@ class TrackDownloadProcessor:
             if duration_ok and title_score >= 0.8 and artist_score >= 0.8:
                 scored.append(((title_score + artist_score) / 2, candidate))
         scored.sort(key=lambda pair: pair[0], reverse=True)
-        if not scored or (len(scored) > 1 and scored[0][0] - scored[1][0] < 0.1):
+        # Music searches commonly return several uploads of the same recording.
+        # Once title, artist and duration have all passed the strict filters above,
+        # a close runner-up is not ambiguity: use the provider's relevance order.
+        if not scored:
             try:
                 await cache_set(key, {"negative": True}, ttl_seconds=120)
             except Exception:

@@ -3,8 +3,9 @@ from typing import Any
 from sqlalchemy import case, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.dialects.postgresql import insert
 
-from modules.tracks.models import Track
+from modules.tracks.models import Track, TrackDownloadStatus, TrackSource
 
 from .models import Playlist, PlaylistItem
 
@@ -67,6 +68,31 @@ class PlaylistsRepository:
         self.db.add(item)
         await self.db.flush()
         return item
+
+    async def import_tracks(self, playlist_id: int, source: TrackSource, tracks: list[dict]) -> int:
+        """Idempotently store metadata without queueing media downloads."""
+        seen: set[str] = set()
+        position = await self.next_position(playlist_id)
+        added = 0
+        for values in tracks:
+            source_id = values["source_id"]
+            if source_id in seen:
+                continue
+            seen.add(source_id)
+            await self.db.execute(
+                insert(Track).values(source=source, download_status=TrackDownloadStatus.NOT_REQUESTED, **values)
+                .on_conflict_do_nothing(index_elements=[Track.source, Track.source_id])
+            )
+            result = await self.db.execute(select(Track.id).where(Track.source == source, Track.source_id == source_id))
+            track_id = result.scalar_one()
+            exists = await self.db.execute(select(PlaylistItem.id).where(PlaylistItem.playlist_id == playlist_id, PlaylistItem.track_id == track_id))
+            if exists.scalar_one_or_none() is not None:
+                continue
+            self.db.add(PlaylistItem(playlist_id=playlist_id, track_id=track_id, position=position))
+            position += 1
+            added += 1
+        await self.db.flush()
+        return added
 
     async def get_item(self, playlist_id: int, item_id: int) -> PlaylistItem | None:
         result = await self.db.execute(

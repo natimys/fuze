@@ -1,17 +1,17 @@
-import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTypescript from "eslint-config-next/typescript";
+import eslint from '@eslint/js'
+import { defineConfig, globalIgnores } from 'eslint/config'
+import globals from 'globals'
+import reactHooks from 'eslint-plugin-react-hooks'
+import tseslint from 'typescript-eslint'
 
 export default defineConfig([
-  ...nextVitals,
-  ...nextTypescript,
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended,
+  reactHooks.configs.flat.recommended,
   {
-    rules: {
-      "react-hooks/set-state-in-effect": "off",
-      // Provider artwork is served from dynamic third-party hosts that cannot be
-      // safely enumerated in Next's build-time image allowlist.
-      "@next/next/no-img-element": "off",
-    },
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+    rules: { 'react-hooks/set-state-in-effect': 'off' },
   },
-  globalIgnores([".next/**", "node_modules/**", "next-env.d.ts"]),
-]);
+  globalIgnores(['dist/**', 'node_modules/**', 'src-tauri/target/**', 'src-tauri/gen/**']),
+])

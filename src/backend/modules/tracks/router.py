@@ -7,6 +7,9 @@ from .module import module
 from .schemas import (
     TrackAcquireRequest,
     TrackAcquireResponse,
+    TrackDownloadBulkRequest,
+    TrackDownloadBulkResponse,
+    TrackDownloadDescriptor,
     TrackRead,
     TrackSearchResponse,
     TrackStreamResponse,
@@ -78,3 +81,25 @@ async def stream_track(
     except TrackDomainError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
     return TrackStreamResponse(url=url)
+
+
+@router.get("/{track_id}/download", response_model=TrackDownloadDescriptor)
+async def download_track_descriptor(
+    track_id: int,
+    service: TracksService = Depends(get_tracks_service),
+):
+    try:
+        return await service.get_download_descriptor(track_id)
+    except TrackDomainError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+
+@router.post("/downloads/bulk", response_model=TrackDownloadBulkResponse)
+async def download_track_descriptors(
+    body: TrackDownloadBulkRequest,
+    service: TracksService = Depends(get_tracks_service),
+):
+    try:
+        return TrackDownloadBulkResponse(data=await service.get_download_descriptors(body.track_ids))
+    except TrackDomainError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc

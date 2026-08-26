@@ -1,0 +1,15 @@
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
+import { ArrowRight, MusicNotes } from '@phosphor-icons/react'
+import './fuze.css'
+
+export function FuzePage({ children }: { children: ReactNode }) { return <main className="fuze-page"><div className="fuze-page__inner">{children}</div></main> }
+export function FuzePageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description?: string; actions?: ReactNode }) { return <header className="fuze-page-header"><div>{eyebrow && <div className="fuze-page-header__eyebrow">{eyebrow}</div>}<h1>{title}</h1>{description && <p>{description}</p>}</div>{actions && <div className="fuze-actions">{actions}</div>}</header> }
+export function FuzePanel({ title, children, className = '' }: { title?: string; children: ReactNode; className?: string }) { return <section className={`fuze-panel ${className}`}>{title && <h2>{title}</h2>}<div className="fuze-panel__body">{children}</div></section> }
+export function FuzeButton({ variant = 'secondary', icon, className = '', children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary'|'secondary'|'ghost'|'danger'|'icon'; icon?: ReactNode }) { return <button {...props} className={`fuze-button fuze-button--${variant} ${variant === 'icon' ? 'fuze-icon-button' : ''} ${className}`}>{icon}{children}</button> }
+export function FuzeField({ label, children }: { label: ReactNode; children: ReactNode }) { return <label className="fuze-field"><span>{label}</span>{children}</label> }
+export function FuzeInput(props: InputHTMLAttributes<HTMLInputElement>) { return <input {...props} /> }
+export function FuzeSelect(props: SelectHTMLAttributes<HTMLSelectElement>) { return <select {...props} /> }
+export function FuzeTextarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) { return <textarea {...props} /> }
+export function FuzeCheckbox({ label, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: ReactNode }) { return <label className="fuze-check"><input type="checkbox" {...props} />{label}</label> }
+export function FuzeState({ kind = 'empty', title, children, action }: { kind?: 'empty'|'loading'|'error'; title?: string; children?: ReactNode; action?: ReactNode }) { return <section className={`fuze-state fuze-state--${kind}`} role={kind === 'error' ? 'alert' : kind === 'loading' ? 'status' : undefined}>{kind === 'empty' && <MusicNotes size={28} />}{title && <h2>{title}</h2>}<div className={kind === 'loading' ? 'fuze-loading' : ''}>{children}</div>{action}</section> }
+export function FuzeCollectionItem({ title, description, meta }: { title: string; description?: string|null; meta: string }) { return <><span className="fuze-collection__copy"><h2>{title}</h2>{description && <p>{description}</p>}<small>{meta}</small></span><ArrowRight size={17} /></> }

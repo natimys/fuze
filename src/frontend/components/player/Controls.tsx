@@ -9,9 +9,9 @@ import {
   Shuffle,
   Repeat,
 } from '@phosphor-icons/react'
-import { audioContext } from './Player'
+import { audioContext } from './audioContext'
 
-export function Controls() {
+export function Controls({ compact = false }: { compact?: boolean }) {
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const isShuffled = usePlayerStore((s) => s.isShuffled)
   const isRepeating = usePlayerStore((s) => s.isRepeating)
@@ -36,7 +36,7 @@ export function Controls() {
 
   return (
     <div className="flex items-center gap-5">
-      <button
+      {!compact && <button
         onClick={toggleShuffle}
         className={`p-1.5 rounded-md transition-colors ${
           isShuffled
@@ -46,7 +46,7 @@ export function Controls() {
         aria-label="Shuffle"
       >
         <Shuffle size={16} weight={isShuffled ? 'fill' : 'regular'} />
-      </button>
+      </button>}
 
       <button
         onClick={previous}
@@ -86,7 +86,7 @@ export function Controls() {
         <SkipForward size={18} weight="fill" />
       </button>
 
-      <button
+      {!compact && <button
         onClick={toggleRepeat}
         className={`p-1.5 rounded-md transition-colors ${
           isRepeating
@@ -96,7 +96,7 @@ export function Controls() {
         aria-label="Repeat"
       >
         <Repeat size={16} weight={isRepeating ? 'fill' : 'regular'} />
-      </button>
+      </button>}
     </div>
   )
 }

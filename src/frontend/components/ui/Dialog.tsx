@@ -45,8 +45,8 @@ export function Dialog({ open, title, description, children, onClose }: DialogPr
 
   if (!open) return null
   return <div className="fixed inset-0 z-[60] flex items-end justify-center p-3 sm:items-center sm:p-6">
-    <button type="button" className="absolute inset-0 cursor-default bg-black/65" aria-label="Close dialog" onClick={onClose} />
-    <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-xl border border-border-thick bg-surface p-5 shadow-2xl sm:p-6">
+    <button type="button" className="fuze-dialog-backdrop absolute inset-0 cursor-default" aria-label="Close dialog" onClick={onClose} />
+    <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} className="fuze-dialog relative max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto p-5 shadow-2xl sm:p-6">
       <div className="flex items-start gap-4">
         <div className="min-w-0 flex-1">
           <h2 id={titleId} className="text-lg font-semibold tracking-tight text-text-primary">{title}</h2>

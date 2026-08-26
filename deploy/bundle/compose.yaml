@@ -132,8 +132,6 @@ services:
 
   frontend:
     image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE must be digest-pinned}
-    environment:
-      API_PROXY_TARGET: http://backend:8000
     depends_on:
       backend: {condition: service_healthy}
     ports:
