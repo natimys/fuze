@@ -1,12 +1,13 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowRight, DownloadSimple, MusicNotes, Plus } from '@phosphor-icons/react'
+import { DownloadSimple, Plus } from '@phosphor-icons/react'
 import { PlaylistImport } from '@/components/playlists/PlaylistImport'
 import { PlaylistShell } from '@/components/playlists/PlaylistShell'
 import { PlaylistForm } from '@/components/playlists/PlaylistForm'
 import { Dialog } from '@/components/ui/Dialog'
 import { api } from '@/lib/api'
 import type { PlaylistCreate, PlaylistSummary } from '@/lib/types'
+import { FuzeButton, FuzeCollectionItem, FuzePageHeader, FuzeState } from '@/components/fuze'
 
 function formatUpdated(value: string) {
   const date = new Date(value)
@@ -15,6 +16,7 @@ function formatUpdated(value: string) {
 
 export default function PlaylistsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -31,6 +33,7 @@ export default function PlaylistsPage() {
   }, [])
 
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort() }, [load])
+  useEffect(() => { if (searchParams.get('import') === '1') { setImportOpen(true); setSearchParams({}, { replace: true }) } }, [searchParams, setSearchParams])
 
   async function create(value: PlaylistCreate) {
     setSaving(true); setFormError(null)
@@ -43,15 +46,12 @@ export default function PlaylistsPage() {
   }
 
   return <PlaylistShell>
-    <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-      <div><h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Playlists</h1><p className="mt-2 max-w-xl text-sm text-text-muted">Keep saved tracks together and arrange them in the order you want.</p></div>
-      <div className="flex gap-2"><button type="button" onClick={() => setImportOpen(true)} className="flex min-h-11 items-center gap-2 rounded-lg border border-border-thick px-4 text-sm font-semibold"><DownloadSimple size={17} />Import</button><button type="button" onClick={() => { setFormError(null); setCreateOpen(true) }} className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-text-primary px-4 text-sm font-semibold text-bg"><Plus size={17} weight="bold" />New playlist</button></div>
-    </div>
+    <FuzePageHeader eyebrow="Tape archive" title="Playlists" description="Keep saved tracks together and arrange them in the order you want." actions={<><FuzeButton onClick={() => setImportOpen(true)} icon={<DownloadSimple size={17} />}>Import</FuzeButton><FuzeButton variant="primary" onClick={() => { setFormError(null); setCreateOpen(true) }} icon={<Plus size={17} weight="bold" />}>New playlist</FuzeButton></>} />
 
-    {error ? <section role="alert" className="mt-10 rounded-xl border border-red-500/20 bg-red-500/10 p-5"><h2 className="font-medium text-red-300">Playlists could not be loaded</h2><p className="mt-1 text-sm text-red-300/80">{error}</p><button type="button" onClick={() => void load()} className="mt-4 min-h-10 rounded-lg border border-red-300/20 px-3 text-sm text-red-200 hover:bg-red-500/10">Try again</button></section>
-    : loading ? <div className="mt-10 grid gap-3 sm:grid-cols-2" role="status" aria-label="Loading playlists">{[0, 1, 2, 3].map((item) => <div key={item} className="h-32 animate-pulse rounded-xl bg-surface" />)}</div>
-    : playlists.length === 0 ? <section className="mt-10 flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-border-thick px-6 text-center"><MusicNotes size={30} className="text-text-muted" aria-hidden="true" /><h2 className="mt-4 text-base font-semibold">No playlists yet</h2><p className="mt-1 max-w-sm text-sm text-text-muted">Create one, then search for tracks to add directly.</p><button type="button" onClick={() => setCreateOpen(true)} className="mt-5 min-h-11 rounded-lg border border-border-thick bg-surface px-4 text-sm font-medium hover:bg-surface-raised">Create your first playlist</button></section>
-    : <ul className="mt-10 grid gap-3 sm:grid-cols-2">{playlists.map((playlist) => <li key={playlist.id}><Link to={`/player/playlists/${playlist.id}`} className="group flex min-h-32 flex-col rounded-xl border border-border bg-surface p-5 transition-colors hover:border-border-thick hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-text-primary"><div className="flex items-start gap-4"><div className="min-w-0 flex-1"><h2 className="truncate text-base font-semibold">{playlist.title}</h2>{playlist.description && <p className="mt-1 line-clamp-2 text-sm text-text-muted">{playlist.description}</p>}</div><ArrowRight size={18} className="mt-1 shrink-0 text-text-muted transition-transform group-hover:translate-x-0.5" /></div><div className="mt-auto flex items-center justify-between gap-4 pt-4 text-xs text-text-muted"><span>{playlist.tracks_count} {playlist.tracks_count === 1 ? 'track' : 'tracks'}</span><span>{formatUpdated(playlist.updated_at)}</span></div></Link></li>)}</ul>}
+    {error ? <FuzeState kind="error" title="Playlists could not be loaded" action={<FuzeButton onClick={() => void load()}>Try again</FuzeButton>}>{error}</FuzeState>
+    : loading ? <FuzeState kind="loading">LOADING TAPES…</FuzeState>
+    : playlists.length === 0 ? <FuzeState title="No playlists yet" action={<FuzeButton onClick={() => setCreateOpen(true)}>Create your first playlist</FuzeButton>}>Create one, then search for tracks to add directly.</FuzeState>
+    : <ul className="fuze-collections">{playlists.map((playlist) => <li key={playlist.id}><Link to={`/player/playlists/${playlist.id}`} className="fuze-collection"><FuzeCollectionItem title={playlist.title} description={playlist.description} meta={`${playlist.tracks_count} ${playlist.tracks_count === 1 ? 'track' : 'tracks'} · ${formatUpdated(playlist.updated_at)}`} /></Link></li>)}</ul>}
 
     <Dialog open={createOpen} title="Create playlist" description="Give it a clear name. You can change these details later." onClose={() => { if (!saving) setCreateOpen(false) }}>
       <PlaylistForm submitLabel="Create playlist" busy={saving} error={formError} onCancel={() => setCreateOpen(false)} onSubmit={create} />

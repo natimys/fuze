@@ -11,7 +11,12 @@ export default defineConfig(({ mode }) => {
       includeAssets: ['brand/favicon.ico', 'brand/favicon-32.png'],
       manifest: {
         name: 'Fuze', short_name: 'Fuze', description: 'Your music, in one place',
-        start_url: '/', scope: '/', display: 'standalone', orientation: 'any',
+        id: '/', start_url: '/', scope: '/', display: 'standalone', orientation: 'any',
+        categories: ['music', 'entertainment'],
+        shortcuts: [
+          { name: 'Downloads', short_name: 'Downloads', url: '/player/downloads', icons: [{ src: '/brand/app-icon-192.png', sizes: '192x192' }] },
+          { name: 'Playlists', short_name: 'Playlists', url: '/player/playlists', icons: [{ src: '/brand/app-icon-192.png', sizes: '192x192' }] },
+        ],
         theme_color: '#0a0a0b', background_color: '#0a0a0b',
         icons: [
           { src: '/brand/app-icon-192.png', sizes: '192x192', type: 'image/png' },
@@ -24,6 +29,7 @@ export default defineConfig(({ mode }) => {
         cleanupOutdatedCaches: true,
         globPatterns: ['**/*.{js,css,html,woff2,png,svg,ico}'],
         runtimeCaching: [
+          { urlPattern: ({ url }) => url.pathname.startsWith('/__fuze_offline_media__/'), handler: 'CacheFirst', options: { cacheName: 'fuze-explicit-media-v1', rangeRequests: true, cacheableResponse: { statuses: [200] } } },
           { urlPattern: ({ request }) => request.destination === 'image', handler: 'StaleWhileRevalidate', options: { cacheName: 'fuze-artwork-v1', expiration: { maxEntries: 150, maxAgeSeconds: 60 * 60 * 24 * 30 }, cacheableResponse: { statuses: [0, 200] } } },
         ],
       },

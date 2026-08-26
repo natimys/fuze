@@ -7,6 +7,7 @@ afterEach(cleanup)
 
 vi.mock('@/src/PlayerLayout', () => ({ default: () => <div data-testid="player-layout"><Outlet /></div> }))
 vi.mock('@/src/pages/AuthPage', () => ({ default: () => <h1>Auth route</h1> }))
+vi.mock('@/src/pages/InstanceSetupPage', () => ({ default: () => <h1>Setup route</h1> }))
 vi.mock('@/src/pages/PlayerPage', () => ({ default: () => <h1>Player route</h1> }))
 vi.mock('@/src/pages/SettingsPage', () => ({ default: () => <h1>Settings route</h1> }))
 vi.mock('@/src/pages/AdminSettingsPage', () => ({ default: () => <h1>Admin route</h1> }))
@@ -29,6 +30,7 @@ describe('application routes', () => {
   })
 
   it.each([
+    ['/setup', 'Setup route'],
     ['/auth', 'Auth route'],
     ['/player', 'Player route'],
     ['/player/settings', 'Settings route'],

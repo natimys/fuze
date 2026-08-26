@@ -7,6 +7,9 @@ import { usePlayerStore } from '@/lib/store'
 import type { PlaylistDetail, PlaylistSummary, PlaylistTrack, TrackRead, TrackSearchResult } from '@/lib/types'
 import { audioContext } from './audioContext'
 import './listening-view.css'
+import { Dialog } from '@/components/ui/Dialog'
+import { PlaylistImport } from '@/components/playlists/PlaylistImport'
+import { FirstRunOnboarding, onboardingKey } from '@/components/onboarding/FirstRunOnboarding'
 
 const tapeStyles = ['aged', 'archival', 'stripe', 'blue', 'yellow', 'minimal', 'redline', 'typed', 'white', 'green']
 const tapeMarks = ['✶', '〰', '☼', '↗', '☺', '', '//', 'K', '♥', '→']
@@ -42,8 +45,13 @@ export function ListeningView() {
   const [selectedPlaylist, setSelectedPlaylist] = useState<PlaylistDetail | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [navigationOpen, setNavigationOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [onboardingOpen, setOnboardingOpen] = useState(false)
   const progressRef = useRef<HTMLDivElement>(null)
+  const progressTrackRef = useRef<HTMLSpanElement>(null)
   const volumeRef = useRef<HTMLDivElement>(null)
+  const seekingRef = useRef(false)
+  const changingVolumeRef = useRef(false)
 
   const state = usePlayerStore()
   const { currentTrack, queue, currentTime, duration, volume, isMuted, isPlaying, isShuffled, isLoading, playbackError } = state
@@ -67,7 +75,7 @@ export function ListeningView() {
     const controller = new AbortController()
     void Promise.all([api.auth.me(), api.config(), api.playlists.list(controller.signal)]).then(([user, config, values]) => {
       if (controller.signal.aborted) return
-      store.setUser(user); store.setConfig(config); setPlaylists(values); setPlaylistsLoading(false); setAuthState('ready')
+      store.setUser(user); store.setConfig(config); setPlaylists(values); setPlaylistsLoading(false); setAuthState('ready'); setOnboardingOpen(!localStorage.getItem(onboardingKey(user.id)))
     }).catch(() => { if (!controller.signal.aborted) { setAuthState('denied'); navigate('/auth', { replace: true }) } })
     return () => controller.abort()
   }, [navigate])
@@ -93,8 +101,8 @@ export function ListeningView() {
   }, [playlists, selectedId])
 
   const seek = (clientX: number) => {
-    if (!progressRef.current || !duration) return
-    const rect = progressRef.current.getBoundingClientRect()
+    if (!progressTrackRef.current || !duration) return
+    const rect = progressTrackRef.current.getBoundingClientRect()
     const next = Math.max(0, Math.min(duration, ((clientX - rect.left) / rect.width) * duration))
     if (audioContext.current) audioContext.current.currentTime = next
     state.setCurrentTime(next)
@@ -109,6 +117,8 @@ export function ListeningView() {
 
   return <div className="lv-shell">
     <SearchModal isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
+    {state.user && onboardingOpen && <FirstRunOnboarding userId={state.user.id} onFinish={()=>setOnboardingOpen(false)} onImport={()=>setImportOpen(true)}/>}
+    <Dialog open={importOpen} title="Перенести музыку" description="Выберите источник — инструкции появятся на следующем шаге." onClose={()=>setImportOpen(false)}><PlaylistImport onDone={()=>{ void api.playlists.list().then(setPlaylists) }}/></Dialog>
     <header className="lv-header"><img src="/brand/fuze-lockup.svg" alt="Fuze" /><div className="lv-header-actions"><button onClick={() => navigate('/player/playlists')}><SquaresFour /> Collection</button><button onClick={() => setSearchOpen(true)}><MagnifyingGlass /> Search <kbd>⌘ K</kbd></button><button onClick={() => navigate('/player/settings')} aria-label="Settings"><Gear /></button></div></header>
     <aside className="lv-shelf">
       <nav className={`lv-nav ${navigationOpen ? 'open' : ''}`} aria-label="Application navigation"><button className="lv-nav-toggle" aria-label={navigationOpen ? 'Close navigation' : 'Open navigation'} onClick={() => setNavigationOpen(!navigationOpen)}>{navigationOpen ? <X /> : <List />}</button><div className="lv-nav-items" aria-hidden={!navigationOpen}><button onClick={() => navigate('/player/playlists')}><SquaresFour /><span>Collection</span></button><button onClick={() => setSearchOpen(true)}><MagnifyingGlass /><span>Search</span></button><button onClick={() => navigate('/player/settings')}><Gear /><span>Settings</span></button></div></nav>
@@ -119,6 +129,6 @@ export function ListeningView() {
       <section className="lv-queue"><div className="lv-queue-heading"><span>Playing from</span><b>{activePlaylistTitle}</b><button onClick={() => navigate('/player/playlists')} aria-label="Queue options"><DotsThree /></button></div><div className="lv-queue-list">{queue.length === 0 ? <div className="lv-empty-queue"><span>Queue is empty</span><button onClick={() => setSearchOpen(true)}>Search for music</button></div> : queue.slice(0, 7).map((track, index) => <button className={track.key === currentTrack?.key ? 'active' : ''} key={track.key} onClick={() => state.setCurrentTrack(track)}><span className="lv-index">{track.key === currentTrack?.key ? <Play weight="fill" /> : index + 1}</span><span className="lv-track-copy"><b>{track.title}</b><small>{track.artist}</small></span><time>{formatDuration(track.duration_ms)}</time><DotsThree /></button>)}</div><button className="lv-edit" onClick={() => navigate('/player/playlists')}>Edit queue <CaretRight /></button></section>
       <section className="lv-identity"><button className="lv-artist" onClick={() => setSearchOpen(true)}>{currentTrack?.artist ?? 'Fuze'} <CaretRight /></button><h1>{currentTrack?.title ?? 'Choose something to play'}</h1><p>{currentTrack?.album ?? 'Your music is ready'}{currentTrack?.year ? <><span>·</span>{currentTrack.year}</> : null}</p>{isLoading && <small>Preparing audio…</small>}{playbackError && <small role="alert">{playbackError}</small>}</section>
     </main>
-    <footer className="lv-transport"><div ref={progressRef} className="lv-progress" role="slider" tabIndex={duration ? 0 : -1} aria-label="Playback position" aria-valuemin={0} aria-valuemax={Math.floor(duration)} aria-valuenow={Math.floor(currentTime)} onPointerDown={(event) => seek(event.clientX)} onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); seek((progressRef.current?.getBoundingClientRect().left ?? 0) + (progressRef.current?.clientWidth ?? 0) * Math.max(0, Math.min(1, (currentTime + (event.key === 'ArrowRight' ? 5 : -5)) / duration))) } }}><time>{formatTime(currentTime)}</time><span><i style={{ width: `${duration ? currentTime / duration * 100 : 0}%` }} /></span><time>-{formatTime(remaining)}</time></div><div className="lv-now"><span className="lv-cover"><Artwork url={currentTrack?.cover_url} /></span><span><b>{currentTrack?.title ?? 'No track selected'}</b><small>{currentTrack?.artist ?? 'Search or choose a tape'}</small></span></div><div className="lv-controls"><button className={isShuffled ? 'active' : ''} onClick={state.toggleShuffle} aria-label="Shuffle"><Shuffle /></button><button onClick={state.playPrev} disabled={!currentTrack} aria-label="Previous"><SkipBack weight="fill" /></button><button className="lv-play" onClick={state.togglePlay} disabled={!currentTrack} aria-label={isPlaying ? 'Pause' : 'Play'}>{isPlaying ? <Pause weight="fill" /> : <Play weight="fill" />}</button><button onClick={state.playNext} disabled={queue.length < 2} aria-label="Next"><SkipForward weight="fill" /></button><button onClick={() => navigate('/player/playlists')} aria-label="Queue"><QueueIcon /></button></div><div className="lv-volume"><button onClick={state.toggleMute} aria-label={isMuted ? 'Unmute' : 'Mute'}>{isMuted ? <SpeakerSlash /> : <SpeakerHigh />}</button><div ref={volumeRef} role="slider" tabIndex={0} aria-label="Volume" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)} onPointerDown={(event) => setVolumeAt(event.clientX)} onKeyDown={(event) => { if (['ArrowLeft','ArrowDown','ArrowRight','ArrowUp'].includes(event.key)) { event.preventDefault(); state.setVolume(volume + (['ArrowRight','ArrowUp'].includes(event.key) ? .05 : -.05)) } }}><i style={{ width: `${(isMuted ? 0 : volume) * 100}%` }} /></div></div></footer>
+    <footer className="lv-transport"><div ref={progressRef} className="lv-progress" role="slider" tabIndex={duration ? 0 : -1} aria-label="Playback position" aria-valuemin={0} aria-valuemax={Math.floor(duration)} aria-valuenow={Math.floor(currentTime)} onPointerDown={(event) => { if (!duration) return; seekingRef.current = true; audioContext.isDragging = true; event.currentTarget.setPointerCapture(event.pointerId); seek(event.clientX) }} onPointerMove={(event) => { if (seekingRef.current) seek(event.clientX) }} onPointerUp={(event) => { if (!seekingRef.current) return; seek(event.clientX); seekingRef.current = false; audioContext.isDragging = false; event.currentTarget.releasePointerCapture(event.pointerId) }} onPointerCancel={() => { seekingRef.current = false; audioContext.isDragging = false }} onKeyDown={(event) => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); const rect = progressTrackRef.current?.getBoundingClientRect(); if (rect) seek(rect.left + rect.width * Math.max(0, Math.min(1, (currentTime + (event.key === 'ArrowRight' ? 5 : -5)) / duration))) } }}><time>{formatTime(currentTime)}</time><span ref={progressTrackRef}><i style={{ width: `${duration ? currentTime / duration * 100 : 0}%` }} /></span><time>-{formatTime(remaining)}</time></div><div className="lv-now"><span className="lv-cover"><Artwork url={currentTrack?.cover_url} /></span><span><b>{currentTrack?.title ?? 'No track selected'}</b><small>{currentTrack?.artist ?? 'Search or choose a tape'}</small></span></div><div className="lv-controls"><button className={isShuffled ? 'active' : ''} onClick={state.toggleShuffle} aria-label="Shuffle"><Shuffle /></button><button onClick={state.playPrev} disabled={!currentTrack} aria-label="Previous"><SkipBack weight="fill" /></button><button className="lv-play" onClick={state.togglePlay} disabled={!currentTrack} aria-label={isPlaying ? 'Pause' : 'Play'}>{isPlaying ? <Pause weight="fill" /> : <Play weight="fill" />}</button><button onClick={state.playNext} disabled={queue.length < 2} aria-label="Next"><SkipForward weight="fill" /></button><button onClick={() => navigate('/player/playlists')} aria-label="Queue"><QueueIcon /></button></div><div className="lv-volume"><button onClick={state.toggleMute} aria-label={isMuted ? 'Unmute' : 'Mute'}>{isMuted ? <SpeakerSlash /> : <SpeakerHigh />}</button><div ref={volumeRef} role="slider" tabIndex={0} aria-label="Volume" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((isMuted ? 0 : volume) * 100)} onPointerDown={(event) => { changingVolumeRef.current = true; event.currentTarget.setPointerCapture(event.pointerId); setVolumeAt(event.clientX) }} onPointerMove={(event) => { if (changingVolumeRef.current) setVolumeAt(event.clientX) }} onPointerUp={(event) => { if (!changingVolumeRef.current) return; setVolumeAt(event.clientX); changingVolumeRef.current = false; event.currentTarget.releasePointerCapture(event.pointerId) }} onPointerCancel={() => { changingVolumeRef.current = false }} onKeyDown={(event) => { if (['ArrowLeft','ArrowDown','ArrowRight','ArrowUp'].includes(event.key)) { event.preventDefault(); state.setVolume(volume + (['ArrowRight','ArrowUp'].includes(event.key) ? .05 : -.05)) } }}><i style={{ width: `${(isMuted ? 0 : volume) * 100}%` }} /></div></div></footer>
   </div>
 }

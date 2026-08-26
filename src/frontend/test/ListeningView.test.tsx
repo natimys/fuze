@@ -37,4 +37,28 @@ describe('production listening view', () => {
     await waitFor(() => expect(usePlayerStore.getState().queueMode).toBe('playlist'))
     expect(screen.getAllByText('Real Playlist')).toHaveLength(2)
   })
+
+  it('seeks relative to the visible progress track', async () => {
+    render(<MemoryRouter><ListeningView /></MemoryRouter>)
+    const slider = await screen.findByRole('slider', { name: 'Playback position' })
+    const trackElement = slider.querySelector('span') as HTMLSpanElement
+    vi.spyOn(trackElement, 'getBoundingClientRect').mockReturnValue({ left: 100, right: 500, top: 0, bottom: 3, width: 400, height: 3, x: 100, y: 0, toJSON: () => ({}) })
+    slider.setPointerCapture = vi.fn()
+
+    fireEvent.pointerDown(slider, { clientX: 300, pointerId: 1 })
+
+    expect(usePlayerStore.getState().currentTime).toBe(91.5)
+  })
+
+  it('changes volume continuously while dragging', async () => {
+    render(<MemoryRouter><ListeningView /></MemoryRouter>)
+    const slider = await screen.findByRole('slider', { name: 'Volume' })
+    vi.spyOn(slider, 'getBoundingClientRect').mockReturnValue({ left: 20, right: 120, top: 0, bottom: 20, width: 100, height: 20, x: 20, y: 0, toJSON: () => ({}) })
+    slider.setPointerCapture = vi.fn()
+
+    fireEvent.pointerDown(slider, { clientX: 40, pointerId: 2 })
+    fireEvent.pointerMove(slider, { clientX: 90, pointerId: 2 })
+
+    expect(usePlayerStore.getState().volume).toBe(.7)
+  })
 })

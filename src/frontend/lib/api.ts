@@ -1,8 +1,7 @@
-import type { AdminSettings, AdminSettingsWrite, KeyLogin, PlaylistCreate, PlaylistDetail, PlaylistReorder, PlaylistSummary, PlaylistTrack, PlaylistUpdate, ProviderTest, PublicConfig, SystemStatus, TrackAcquireResponse, TrackRead, TrackSearchResponse, TrackSource, TrackStreamResponse, UserCreate, UserLogin, UserPublic, UserRegister, UsersResponse, UserUpdate } from './types'
+import type { AdminSettings, AdminSettingsWrite, KeyLogin, PlaylistCreate, PlaylistDetail, PlaylistReorder, PlaylistSummary, PlaylistTrack, PlaylistUpdate, ProviderTest, PublicConfig, SystemStatus, TrackAcquireResponse, TrackDownloadBulkResponse, TrackDownloadDescriptor, TrackRead, TrackSearchResponse, TrackSource, TrackStreamResponse, UserCreate, UserLogin, UserPublic, UserRegister, UsersResponse, UserUpdate } from './types'
 import type { ImportedTrack, ImportResult, ImportSource } from './types'
-import { apiBaseUrl } from '@/services/runtimeConfig'
+import { getApiBaseUrl } from '@/services/runtimeConfig'
 
-const API_BASE = apiBaseUrl
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 let refreshPromise: Promise<boolean> | null = null
 
@@ -51,7 +50,7 @@ async function tryRefresh(): Promise<boolean> {
       const headers = headersFor(options)
       const refreshCsrf = cookie('csrf_refresh_token')
       if (refreshCsrf) headers.set('X-CSRF-TOKEN', decodeURIComponent(refreshCsrf))
-      const res = await fetch(`${API_BASE}/auth/refresh`, { ...options, credentials: 'include', headers })
+      const res = await fetch(`${getApiBaseUrl()}/auth/refresh`, { ...options, credentials: 'include', headers })
       return res.ok
     } catch { return false } finally { refreshPromise = null }
   })()
@@ -61,7 +60,7 @@ async function tryRefresh(): Promise<boolean> {
 async function request<T>(path: string, options: RequestInit = {}, protectedRequest = true, retried = false): Promise<T> {
   let res: Response
   try {
-    res = await fetch(`${API_BASE}${path}`, { ...options, credentials: 'include', headers: headersFor(options) })
+    res = await fetch(`${getApiBaseUrl()}${path}`, { ...options, credentials: 'include', headers: headersFor(options) })
   } catch (reason) {
     if (reason && typeof reason === 'object' && 'name' in reason && reason.name === 'AbortError') throw reason
     throw new ApiError('Network unavailable. Check your connection and try again.', 0)
@@ -89,6 +88,8 @@ export const api = {
     acquire: (source: TrackSource, sourceId: string) => request<TrackAcquireResponse>('/tracks/acquire', { method: 'POST', body: JSON.stringify({ source, source_id: sourceId }) }),
     get: (trackId: number, signal?: AbortSignal) => request<TrackRead>(`/tracks/${trackId}`, { signal }),
     stream: (trackId: number, signal?: AbortSignal) => request<TrackStreamResponse>(`/tracks/${trackId}/stream`, { signal }),
+    download: (trackId: number, signal?: AbortSignal) => request<TrackDownloadDescriptor>(`/tracks/${trackId}/download`, { signal }),
+    downloadBulk: (trackIds: number[]) => request<TrackDownloadBulkResponse>('/tracks/downloads/bulk', { method: 'POST', body: JSON.stringify({ track_ids: trackIds }) }),
   },
   playlists: {
     list: (signal?: AbortSignal) => request<PlaylistSummary[]>('/playlists', { signal }),

@@ -19,7 +19,7 @@ class BrowserMediaStorage implements MediaStorage {
   async remove(trackId: string) { await (await caches.open(this.cache)).delete(this.request(trackId)) }
   async resolvePlaybackSource(trackId: string) {
     const response = await (await caches.open(this.cache)).match(this.request(trackId))
-    return response ? URL.createObjectURL(await response.blob()) : null
+    return response ? this.request(trackId).url : null
   }
 }
 

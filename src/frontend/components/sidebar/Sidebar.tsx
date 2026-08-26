@@ -12,20 +12,25 @@ import {
   ShieldCheck,
   SignOut,
   MusicNote,
+  DownloadSimple,
+  Download,
 } from '@phosphor-icons/react'
 import { motion, AnimatePresence } from 'motion/react'
 
 interface SidebarProps {
   isOpen: boolean
   onClose: () => void
+  inline?: boolean
 }
 
 const navItems = [
   { icon: House, label: 'Home', href: '/player' },
   { icon: ListMagnifyingGlass, label: 'Playlists', href: '/player/playlists' },
+  { icon: DownloadSimple, label: 'Downloads', href: '/player/downloads' },
+  { icon: Download, label: 'Import music', href: '/player/playlists?import=1' },
 ]
 
-export function Sidebar({ isOpen, onClose }: SidebarProps) {
+export function Sidebar({ isOpen, onClose, inline = false }: SidebarProps) {
   const user = usePlayerStore((s) => s.user)
   const setUser = usePlayerStore((s) => s.setUser)
   const navigate = useNavigate()
@@ -65,6 +70,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   return (
     <>
+      {inline && <nav className="fuze-nav" aria-label="Application navigation">{navItems.map((item) => <Link key={item.href} to={item.href} aria-current={pathname === item.href || (item.href !== '/player' && pathname.startsWith(`${item.href}/`)) ? 'page' : undefined}><item.icon size={18} /><span>{item.label}</span></Link>)}<Link to="/player/settings" aria-current={pathname === '/player/settings' ? 'page' : undefined} className="fuze-nav__bottom"><Gear size={18} /><span>Settings</span></Link>{user?.role === 'admin' && <Link to="/player/admin-settings" aria-current={pathname.startsWith('/player/admin-settings') ? 'page' : undefined}><ShieldCheck size={18} /><span>Admin</span></Link>}</nav>}
       <AnimatePresence>
         {isOpen && (
           <motion.div

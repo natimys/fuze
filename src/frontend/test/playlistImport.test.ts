@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapImportedTracks, parseCsv } from '@/lib/playlistImport'
+import { groupImportedPlaylists, mapImportedTracks, parseCsv } from '@/lib/playlistImport'
 
 describe('Exportify import', () => {
   it('parses quoted Exportify columns and Spotify URI', () => {
@@ -9,5 +9,11 @@ describe('Exportify import', () => {
       source_id: 'abc123', title: 'Song, With Comma', artist: 'Artist', album: 'Album',
       year: 2024, duration_ms: 140567, cover_url: 'https://image',
     }])
+  })
+
+  it('groups common CSV rows by playlist before import', () => {
+    const csv = 'playlist,title,artist,album\nRoadtrip,Drive,Artist A,Album A\nLiked Songs,Heart,Artist B,Album B\nRoadtrip,Sun,Artist C,Album C\n'
+    const groups = groupImportedPlaylists(parseCsv(csv), 'music.csv')
+    expect(groups.map((group) => [group.title, group.tracks.length])).toEqual([['Roadtrip', 2], ['Liked Songs', 1]])
   })
 })

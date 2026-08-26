@@ -1,5 +1,11 @@
 import type { ImportedTrack } from './types'
 
+export interface ImportedPlaylistPreview {
+  id: string
+  title: string
+  tracks: ImportedTrack[]
+}
+
 export function parseCsv(text: string): Record<string, string>[] {
   const table: string[][] = []
   let row: string[] = [], field = '', quoted = false
@@ -36,4 +42,21 @@ export function mapImportedTracks(rows: Record<string, unknown>[], fallback: str
       cover_url: String(row['album image url'] ?? row.cover_url ?? '') || null,
     }
   }).filter(track => track.title)
+}
+
+const playlistKeys = ['playlist', 'playlist name', 'playlist_name', 'list', 'collection']
+
+export function groupImportedPlaylists(rows: Record<string, unknown>[], fileName: string): ImportedPlaylistPreview[] {
+  const fallbackTitle = fileName.replace(/\.(csv|json)$/i, '') || 'Imported playlist'
+  const groups = new Map<string, Record<string, unknown>[]>()
+  for (const row of rows) {
+    const rawTitle = playlistKeys.map((key) => row[key]).find((value) => typeof value === 'string' && value.trim())
+    const title = typeof rawTitle === 'string' ? rawTitle.trim() : fallbackTitle
+    groups.set(title, [...(groups.get(title) ?? []), row])
+  }
+  return [...groups.entries()].map(([title, values], index) => ({
+    id: `${index}:${title}`,
+    title,
+    tracks: mapImportedTracks(values, `${fileName}-${index}`),
+  })).filter((playlist) => playlist.tracks.length > 0)
 }

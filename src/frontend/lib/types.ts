@@ -99,6 +99,17 @@ export interface TrackRead {
 }
 
 export interface TrackStreamResponse { url: string }
+export interface TrackDownloadDescriptor {
+  track_id: number
+  url: string
+  content_type: string
+  content_length: number
+  etag: string | null
+  checksum: string | null
+  expires_at: string
+  media_version: string
+}
+export interface TrackDownloadBulkResponse { data: TrackDownloadDescriptor[] }
 export interface TrackAcquireResponse { status: Exclude<TrackAvailability, 'remote'>; track_id: number }
 
 export interface PlaylistSummary {

@@ -13,7 +13,7 @@ export function MiniPlayer() {
   const playbackEnabled = usePlayerStore((state) => state.config?.features.playback)
   if (pathname === '/player' || !track || !playbackEnabled) return null
 
-  return <aside aria-label="Mini player" className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 px-4 py-2 shadow-2xl backdrop-blur sm:px-6">
+  return <aside aria-label="Mini player" className="fuze-mini">
     <ProgressBar />
     <div className="flex min-w-0 items-center gap-3">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface-raised">{track.cover_url ? <img src={track.cover_url} alt="" className="h-full w-full object-cover" /> : <MusicNote className="text-text-muted" />}</div>

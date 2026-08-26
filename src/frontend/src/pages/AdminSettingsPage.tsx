@@ -3,12 +3,13 @@ import { api, ApiError } from '@/lib/api'
 import type { AdminSettings, AdminSettingsWrite, ProviderTest, SystemStatus, UserPublic, UserRole } from '@/lib/types'
 import { usePlayerStore } from '@/lib/store'
 import { PlaylistShell } from '@/components/playlists/PlaylistShell'
+import { FuzeButton, FuzePageHeader, FuzePanel, FuzeState } from '@/components/fuze'
 
-const inputClass = 'mt-1 h-10 w-full rounded-lg border border-border bg-hover-strong px-3 text-sm outline-none focus:border-border-thick'
-const buttonClass = 'min-h-10 rounded-lg border border-border-thick bg-surface-raised px-4 text-sm font-medium hover:bg-hover-strong disabled:cursor-not-allowed disabled:opacity-50'
+const inputClass = 'fuze-input'
+const buttonClass = 'fuze-button fuze-button--secondary'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="rounded-xl border border-border bg-surface p-5 sm:p-6"><h2 className="text-lg font-semibold">{title}</h2><div className="mt-5 space-y-4">{children}</div></section>
+  return <FuzePanel title={title}>{children}</FuzePanel>
 }
 
 export default function SettingsPage() {
@@ -102,13 +103,13 @@ export default function SettingsPage() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'User creation failed') }
   }
 
-  if (currentUser && currentUser.role !== 'admin') return <PlaylistShell><div role="alert" className="rounded-xl border border-red-500/20 bg-red-500/10 p-6"><h1 className="text-xl font-semibold text-red-300">403 — administrator access required</h1></div></PlaylistShell>
+  if (currentUser && currentUser.role !== 'admin') return <PlaylistShell><FuzeState kind="error" title="403 — administrator access required" /></PlaylistShell>
 
   return <PlaylistShell>
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><h1 className="text-3xl font-semibold tracking-tight">Admin Settings</h1><p className="mt-2 text-sm text-text-muted">Instance configuration is applied to API and workers within five seconds.</p></div><button className={buttonClass} onClick={() => void load()} type="button">Reload</button></div>
-    {error && <div role="alert" className="mt-6 rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">{error}</div>}
-    {message && <div role="status" className="mt-6 rounded-lg border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-300">{message}</div>}
-    {!draft ? <div className="mt-10 text-sm text-text-muted" role="status">Loading settings…</div> : <div className="mt-8 grid gap-5">
+    <FuzePageHeader eyebrow="Instance control" title="Admin Settings" description="Instance configuration is applied to API and workers within five seconds." actions={<FuzeButton onClick={() => void load()}>Reload</FuzeButton>} />
+    {error && <div role="alert" className="fuze-alert">{error}</div>}
+    {message && <div role="status" className="fuze-alert fuze-alert--success">{message}</div>}
+    {!draft ? <FuzeState kind="loading">LOADING SETTINGS…</FuzeState> : <div className="fuze-section-grid">
       <Section title="General"><label className="block text-sm text-text-secondary">Instance name<input className={inputClass} value={draft.instance_name} maxLength={100} onChange={(event) => setDraft({ ...draft, instance_name: event.target.value })} /></label><p className="text-xs text-text-muted">Configuration version {draft.version} · application {system?.app_version ?? '…'} · schema {system?.schema_revision ?? '…'}</p></Section>
       <Section title="Authentication"><label className="block text-sm text-text-secondary">Login methods<select className={inputClass} value={draft.auth.mode} onChange={(event) => setDraft({ ...draft, auth: { ...draft.auth, mode: event.target.value as AdminSettings['auth']['mode'] } })}><option value="password">Password</option><option value="key">Access key</option><option value="both">Password and access key</option></select></label><label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={draft.auth.registration} disabled={draft.auth.mode === 'key'} onChange={(event) => setDraft({ ...draft, auth: { ...draft.auth, registration: event.target.checked } })} />Allow public registration</label></Section>
       <Section title="Providers">
