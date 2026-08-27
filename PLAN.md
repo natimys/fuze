@@ -1,5 +1,18 @@
 # Fuze Public Beta
 
+## Interview web-demo release candidate (2026-08-28)
+
+- [x] Web-only release scope; desktop remains preview
+- [x] Isolated PostgreSQL test configuration and full backend suite
+- [x] Artwork migration head/check/downgrade/upgrade
+- [x] Frontend lint, typecheck, bounded Vitest, Chromium E2E and web build
+- [x] Web build excludes Tauri-only chunks and lazy-loads secondary screens
+- [ ] Clean Linux Public HTTPS install and live-provider browser smoke
+- [ ] Off-host backup, recorded rollback command and demo SHA/tag
+
+The two unchecked items require the target server, domains and live provider
+credentials; they are release gates, not claims about the local workspace.
+
 ## Completed
 
 - [x] Application stabilization

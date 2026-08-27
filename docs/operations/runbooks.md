@@ -14,6 +14,16 @@ docker compose run --rm backend fuze rescue reset-admin-password admin@example.c
 
 If the user exists but is not an administrator, use `promote-user EMAIL`. `bootstrap-admin` intentionally refuses to run while any active administrator exists.
 
+For a key-only account, rotate the access key by numeric user ID. The command
+prints the replacement exactly once and revokes sessions tied to the old key:
+
+```bash
+docker compose run --rm backend fuze rescue reset-access-key USER_ID --yes
+```
+
+Transfer the replacement through a protected channel; it cannot be recovered
+from PostgreSQL because only its hash is stored.
+
 ## Failed update
 
 Do not rerun migrations manually and never downgrade the schema. Read `/opt/fuze/deploy/failed-VERSION.log`, verify the current bundle with `docker compose config`, and run `fuze rescue db-status`. The installer restores the previous bundle after a readiness failure. If the old image cannot run against the migrated schema, stop write services and restore the pre-update archive instead.

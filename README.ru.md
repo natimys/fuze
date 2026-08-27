@@ -3,11 +3,24 @@
 Русский | [English](README.md)
 
 Fuze — самостоятельный музыкальный плеер, который объединяет музыку из YouTube,
-Яндекс Музыки и Spotify в одной медиатеке.
+Яндекс Музыки и Spotify в одной медиатеке. Spotify используется только для
+поиска метаданных: Fuze открывает Spotify и не доставляет аудио Spotify.
 
 Приложение работает в Docker-контейнерах. Настройки хранятся в PostgreSQL,
 фоновые задачи выполняются через Redis, а загруженные треки — в
 S3-совместимом хранилище.
+
+Поддерживаемый клиент для демонстрации — веб-приложение. Desktop-клиент на Tauri
+остаётся preview и не входит в web release gate. Веб-клиент поддерживает поиск,
+загрузку и воспроизведение, плейлисты с собственным artwork и живой импорт из
+Яндекс Музыки через device flow, если провайдер включён администратором.
+
+## Авторизация
+
+Сервер поддерживает режимы `password`, `key` и `both`. Публичная регистрация
+управляется отдельным флагом и доступна только при включённом входе по ключу.
+После регистрации access key показывается ровно один раз — сохраните его до
+ухода со страницы. Если Clipboard API недоступен, ключ всё равно остаётся виден.
 
 ## Установка
 
@@ -96,6 +109,10 @@ npm test
 npm run build
 ```
 
+Тесты отклоняют URL базы, если в имени БД нет `test`; никогда не направляйте
+`.env.test` на production-базу. Живые провайдеры и demo зависят от настроенных
+оператором credentials и доступности внешних API.
+
 Для разработки фронтенда запустите `npm run dev` из каталога `src/frontend`.
 Vite использует порт 3000 и проксирует `/api` на `API_PROXY_TARGET` (по умолчанию
 `http://127.0.0.1:8000`).
@@ -114,6 +131,7 @@ sudo docker compose restart backend
 ```bash
 sudo docker compose run --rm backend fuze rescue bootstrap-admin
 sudo docker compose run --rm backend fuze rescue reset-admin-password EMAIL
+sudo docker compose run --rm backend fuze rescue reset-access-key USER_ID --yes
 sudo docker compose run --rm backend fuze rescue promote-user EMAIL
 sudo docker compose exec backend fuze rescue doctor
 ```
