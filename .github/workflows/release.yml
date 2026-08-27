@@ -116,9 +116,11 @@ jobs:
       - uses: sigstore/cosign-installer@v3
       - name: Native amd64 and QEMU arm64 smoke tests
         run: |
-          docker run --rm --platform linux/amd64 "${BACKEND_IMAGE}@${{ steps.backend.outputs.digest }}" fuze --help
-          docker run --rm --platform linux/arm64 "${BACKEND_IMAGE}@${{ steps.backend.outputs.digest }}" fuze --help
-          docker image inspect "${BACKEND_IMAGE}@${{ steps.backend.outputs.digest }}" >/dev/null
+          backend_ref="${BACKEND_IMAGE}@${{ steps.backend.outputs.digest }}"
+          docker run --rm --platform linux/amd64 "$backend_ref" fuze --help
+          docker image rm "$backend_ref"
+          docker run --rm --platform linux/arm64 "$backend_ref" fuze --help
+          docker image inspect "$backend_ref" >/dev/null
       - name: Keyless signatures
         run: |
           cosign sign --yes "${BACKEND_IMAGE}@${{ steps.backend.outputs.digest }}"
