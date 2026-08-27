@@ -196,6 +196,8 @@ jobs:
         run: |
           cd release-bundle
           docker compose pull postgres redis minio minio-init backup
+          docker image inspect minio/minio:RELEASE.2025-09-07T16-13-09Z >/dev/null
+          docker image inspect minio/mc:RELEASE.2025-08-13T08-35-41Z >/dev/null
           docker compose up -d --pull never
           for attempt in $(seq 1 60); do
             docker compose exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)" && break
