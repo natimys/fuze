@@ -47,7 +47,7 @@ async def test_engine(test_settings: TestSettings):
             text(
                 "INSERT INTO instance_settings (id, version, settings) VALUES "
                 "(1, 1, CAST(:settings AS jsonb)) ON CONFLICT (id) DO UPDATE SET "
-                "settings = jsonb_set(instance_settings.settings, '{auth,registration}', 'true'::jsonb)"
+                "version = EXCLUDED.version, settings = EXCLUDED.settings, updated_by = NULL"
             ),
             {
                 "settings": TEST_INSTANCE_SETTINGS
