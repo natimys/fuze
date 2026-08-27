@@ -67,7 +67,8 @@ jobs:
           npm run build
           npm audit --audit-level=high
 
-  publish-backend:
+  publish_backend:
+    name: publish-backend
     needs: test
     runs-on: ubuntu-latest
     outputs:
@@ -109,7 +110,8 @@ jobs:
       - name: Keyless signature
         run: cosign sign --yes "${BACKEND_IMAGE}@${{ steps.backend.outputs.digest }}"
 
-  publish-frontend:
+  publish_frontend:
+    name: publish-frontend
     needs: test
     runs-on: ubuntu-latest
     outputs:
@@ -145,7 +147,7 @@ jobs:
         run: cosign sign --yes "${FRONTEND_IMAGE}@${{ steps.frontend.outputs.digest }}"
 
   release:
-    needs: [publish-backend, publish-frontend]
+    needs: [publish_backend, publish_frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -154,9 +156,11 @@ jobs:
         with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
       - name: Build digest-pinned deployment bundle
         env:
-          BACKEND_DIGEST: ${{ needs.publish-backend.outputs.backend_digest }}
-          FRONTEND_DIGEST: ${{ needs.publish-frontend.outputs.frontend_digest }}
+          BACKEND_DIGEST: ${{ needs.publish_backend.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.publish_frontend.outputs.frontend_digest }}
         run: |
+          [[ "$BACKEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$FRONTEND_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
           cp -a deploy/bundle release-bundle
           printf '%s\n' "${GITHUB_REF_NAME}" > release-bundle/VERSION
           printf 'BACKEND_IMAGE=%s@%s\nFRONTEND_IMAGE=%s@%s\n' "$BACKEND_IMAGE" "$BACKEND_DIGEST" "$FRONTEND_IMAGE" "$FRONTEND_DIGEST" > release-bundle/.env.release
@@ -212,8 +216,8 @@ jobs:
       - uses: sigstore/cosign-installer@v3
       - name: Export OCI SBOM and provenance attestations
         env:
-          BACKEND_DIGEST: ${{ needs.publish-backend.outputs.backend_digest }}
-          FRONTEND_DIGEST: ${{ needs.publish-frontend.outputs.frontend_digest }}
+          BACKEND_DIGEST: ${{ needs.publish_backend.outputs.backend_digest }}
+          FRONTEND_DIGEST: ${{ needs.publish_frontend.outputs.frontend_digest }}
         run: |
           cosign download sbom "${BACKEND_IMAGE}@${BACKEND_DIGEST}" > backend-sbom.spdx.json
           cosign download sbom "${FRONTEND_IMAGE}@${FRONTEND_DIGEST}" > frontend-sbom.spdx.json
