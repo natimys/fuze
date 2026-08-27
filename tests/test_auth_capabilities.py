@@ -25,11 +25,7 @@ async def test_disabled_password_login_and_registration_return_machine_codes(
     )
     registration = await client.post(
         "/api/v1/auth/register",
-        json={
-            "name": "Nobody",
-            "email": "nobody@example.com",
-            "password": "long-enough-password",
-        },
+        json={"name": "Nobody"},
     )
     assert login.status_code == 403
     assert login.json()["detail"] == "password_login_disabled"
@@ -42,26 +38,15 @@ async def test_key_login_links_session_and_revocation_is_immediate(
 ):
     registered = await client.post(
         "/api/v1/auth/register",
-        json={
-            "name": "Key user",
-            "email": "key@example.com",
-            "password": "long-enough-password",
-        },
+        json={"name": "Key user"},
     )
     assert registered.status_code == 200
-    secret = "fuze_" + "a" * 43
+    registration = registered.json()
+    secret = registration["access_key"]
     async with AsyncSession(test_engine, expire_on_commit=False) as db:
-        user = (
-            await db.execute(select(User).where(User.email == "key@example.com"))
+        access_key = (
+            await db.execute(select(AccessKey).where(AccessKey.user_id == registration["user"]["id"]))
         ).scalar_one()
-        access_key = AccessKey(
-            user_id=user.id,
-            label="test",
-            key_hash=sha256(secret.encode()).hexdigest(),
-        )
-        db.add(access_key)
-        await db.commit()
-        await db.refresh(access_key)
         key_id = access_key.id
 
     monkeypatch.setattr(
@@ -69,7 +54,7 @@ async def test_key_login_links_session_and_revocation_is_immediate(
     )
     response = await client.post("/api/v1/auth/key-login", json={"key": secret})
     assert response.status_code == 200
-    assert response.json()["email"] == "key@example.com"
+    assert response.json()["email"] is None
 
     async with AsyncSession(test_engine) as db:
         session = (
@@ -92,7 +77,10 @@ async def test_key_login_links_session_and_revocation_is_immediate(
     assert (await client.get("/api/v1/auth/me")).status_code == 401
 
 
-async def test_key_login_disabled_in_password_mode(client):
+async def test_key_login_disabled_in_password_mode(client, monkeypatch):
+    monkeypatch.setattr(
+        "modules.auth.service.get_fuze_config", lambda: config("password", False)
+    )
     response = await client.post(
         "/api/v1/auth/key-login", json={"key": "fuze_" + "x" * 43}
     )
@@ -101,17 +89,17 @@ async def test_key_login_disabled_in_password_mode(client):
 
 
 async def test_admin_can_generate_key_user_on_site(client, test_engine):
-    await client.post(
-        "/api/v1/auth/register",
-        json={
-            "name": "Admin",
-            "email": "admin@example.com",
-            "password": "long-enough-password",
-        },
-    )
+    from core.security import hash_password
+
     async with AsyncSession(test_engine) as db:
-        await db.execute(
-            update(User).where(User.email == "admin@example.com").values(role="ADMIN")
+        db.add(
+            User(
+                name="Admin",
+                email="admin@example.com",
+                password=hash_password("long-enough-password"),
+                role="ADMIN",
+                is_active=True,
+            )
         )
         await db.commit()
     login = await client.post(

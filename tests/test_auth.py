@@ -1,19 +1,19 @@
 from httpx import ASGITransport, AsyncClient
 
 
-async def test_register_normalizes_identity(client):
+async def test_register_creates_key_only_identity(client):
     response = await client.post(
         "/api/v1/auth/register",
         json={
             "name": "  Test User  ",
-            "email": "  TEST@EMAIL.COM ",
-            "password": "test_password123",
         },
     )
 
     assert response.status_code == 200
-    assert response.json()["name"] == "Test User"
-    assert response.json()["email"] == "test@email.com"
+    payload = response.json()
+    assert payload["user"]["name"] == "Test User"
+    assert payload["user"]["email"] is None
+    assert payload["access_key"].startswith("fuze_")
 
 
 async def test_login_returns_user_and_http_only_cookies(existing_user):
@@ -30,6 +30,14 @@ async def test_login_returns_user_and_http_only_cookies(existing_user):
     assert any("access_token=" in value and "HttpOnly" in value for value in set_cookie)
     assert any(
         "refresh_token=" in value and "HttpOnly" in value for value in set_cookie
+    )
+    assert any(
+        "access_token=" in value and "Max-Age=2592000" in value
+        for value in set_cookie
+    )
+    assert any(
+        "refresh_token=" in value and "Max-Age=2592000" in value
+        for value in set_cookie
     )
     assert any(
         "refresh_token=" in value and "Path=/api/v1/auth/refresh" in value

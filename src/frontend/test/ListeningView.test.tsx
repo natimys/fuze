@@ -61,4 +61,33 @@ describe('production listening view', () => {
 
     expect(usePlayerStore.getState().volume).toBe(.7)
   })
+
+  it('opens queue actions and requires confirmation before clearing the queue', async () => {
+    render(<MemoryRouter><ListeningView /></MemoryRouter>)
+    await screen.findByRole('heading', { name: track.title })
+    fireEvent.click(screen.getByRole('button', { name: 'Queue options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Очистить очередь' }))
+    expect(screen.getByRole('dialog', { name: 'Очистить очередь?' })).toBeInTheDocument()
+    expect(usePlayerStore.getState().queue).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Очистить очередь' }))
+    expect(usePlayerStore.getState().queue).toHaveLength(0)
+    expect(usePlayerStore.getState().currentTrack).toBeNull()
+  })
+
+  it('keeps the current track visible after advancing past the first seven queue items', async () => {
+    const queue = Array.from({ length: 12 }, (_, index) => ({
+      ...track,
+      key: `track:${index + 1}`,
+      track_id: index + 1,
+      title: `Queue track ${index + 1}`,
+    }))
+    usePlayerStore.setState({ queue, currentTrack: queue[7] })
+
+    render(<MemoryRouter><ListeningView /></MemoryRouter>)
+
+    expect(await screen.findByRole('heading', { name: 'Queue track 8' })).toBeInTheDocument()
+    expect(screen.getAllByText('Queue track 7')).not.toHaveLength(0)
+    expect(screen.getAllByText('Queue track 12')).not.toHaveLength(0)
+    expect(screen.queryByText('Queue track 6')).not.toBeInTheDocument()
+  })
 })

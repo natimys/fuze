@@ -1,6 +1,13 @@
 import os
 from pathlib import Path
 
+# Application-level limits make the suite order-dependent because all test clients
+# share one Redis instance and IP. Set overrides before importing core.security:
+# that module constructs AuthX and caches Settings during import.
+os.environ["AUTH_RATE_LIMIT_REQUESTS"] = "0"
+os.environ["SEARCH_RATE_LIMIT_REQUESTS"] = "0"
+os.environ["ACQUIRE_RATE_LIMIT_REQUESTS"] = "0"
+
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -9,18 +16,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from core.settings import TestSettings
+from core.security import hash_password
 from database.base import Base
 from database.dependencies import get_db
 
-# Application-level limits make the suite order-dependent because all test clients
-# share one Redis instance and IP. RedisRateLimit itself is covered separately.
-os.environ["AUTH_RATE_LIMIT_REQUESTS"] = "0"
-os.environ["SEARCH_RATE_LIMIT_REQUESTS"] = "0"
-os.environ["ACQUIRE_RATE_LIMIT_REQUESTS"] = "0"
-
 ROOT_DIR = Path(__file__).resolve().parent.parent
 TEST_INSTANCE_SETTINGS = (
-    '{"instance_name":"Fuze","auth":{"mode":"password","registration":true},'
+    '{"instance_name":"Fuze","auth":{"mode":"both","registration":true},'
     '"features":{"playback":true},"providers":{"youtube":true,"yandex":false,'
     '"spotify":false,"spotify_market":"US"}}'
 )
@@ -104,16 +106,19 @@ async def client(test_engine, clean_tables):
 
 
 @pytest.fixture
-async def existing_user(client):
-    register_response = await client.post(
-        "/api/v1/auth/register",
-        json={
-            "name": "test_name",
-            "email": "test@email.com",
-            "password": "test_password123",
-        },
-    )
-    assert register_response.status_code == 200
+async def existing_user(client, test_engine):
+    async with test_engine.begin() as connection:
+        await connection.execute(
+            text(
+                "INSERT INTO users (email, name, password, role, is_active) "
+                "VALUES (:email, :name, :password, 'USER', true)"
+            ),
+            {
+                "email": "test@email.com",
+                "name": "test_name",
+                "password": hash_password("test_password123"),
+            },
+        )
     login_response = await client.post(
         "/api/v1/auth/login",
         json={

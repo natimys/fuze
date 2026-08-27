@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePlayerStore } from '@/lib/store'
 import type { TrackSearchResult } from '@/lib/types'
 
@@ -49,5 +49,26 @@ describe('player queue', () => {
     usePlayerStore.getState().removeFromQueue(first.key)
     expect(usePlayerStore.getState().currentTrack).toEqual(second)
     expect(usePlayerStore.getState().isPlaying).toBe(false)
+  })
+
+  it('reorders queue tracks and places a chosen track next', () => {
+    const tracks = [track(1), track(2), track(3)]
+    usePlayerStore.setState({ queue: tracks, currentTrack: tracks[0], isShuffled: true })
+    usePlayerStore.getState().reorderQueue(2, 1)
+    expect(usePlayerStore.getState().queue.map((item) => item.track_id)).toEqual([1, 3, 2])
+    expect(usePlayerStore.getState().isShuffled).toBe(false)
+    usePlayerStore.getState().playNextTrack(track(4))
+    expect(usePlayerStore.getState().queue.map((item) => item.track_id)).toEqual([1, 4, 3, 2])
+  })
+
+  it('materializes the shuffled playback order in the queue', () => {
+    const tracks = [track(1), track(2), track(3), track(4)]
+    usePlayerStore.setState({ queue: tracks, currentTrack: tracks[1], isShuffled: false })
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    usePlayerStore.getState().toggleShuffle()
+    expect(usePlayerStore.getState().queue.map((item) => item.track_id)).toEqual([2, 3, 4, 1])
+    expect(usePlayerStore.getState().currentTrack).toEqual(tracks[1])
+    usePlayerStore.getState().playNext()
+    expect(usePlayerStore.getState().currentTrack?.track_id).toBe(3)
   })
 })

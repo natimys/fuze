@@ -8,7 +8,7 @@ from core.instance_config import load_fuze_config
 
 VALID = """
 [auth]
-mode = "password"
+mode = "both"
 registration = true
 [features]
 playback = true
@@ -28,7 +28,7 @@ def write(tmp_path: Path, value: str) -> Path:
 
 def test_loads_and_normalizes_strict_config(tmp_path):
     config = load_fuze_config(write(tmp_path, VALID))
-    assert config.auth.mode == "password"
+    assert config.auth.mode == "both"
     assert config.providers.spotify_market == "US"
 
 
@@ -38,9 +38,14 @@ def test_unknown_setting_reports_its_path(tmp_path):
     assert "providers.unknown" in str(error.value)
 
 
-def test_key_mode_rejects_registration(tmp_path):
+def test_key_mode_allows_registration(tmp_path):
+    config = load_fuze_config(write(tmp_path, VALID.replace('mode = "both"', 'mode = "key"')))
+    assert config.auth.registration is True
+
+
+def test_password_mode_rejects_key_registration(tmp_path):
     with pytest.raises(ValidationError, match="registration=true"):
-        load_fuze_config(write(tmp_path, VALID.replace('mode = "password"', 'mode = "key"')))
+        load_fuze_config(write(tmp_path, VALID.replace('mode = "both"', 'mode = "password"')))
 
 
 def test_missing_enabled_provider_credentials_are_rejected(tmp_path, monkeypatch):

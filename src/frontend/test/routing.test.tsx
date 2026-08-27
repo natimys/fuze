@@ -26,7 +26,7 @@ describe('application routes', () => {
   it('redirects the root to /player', async () => {
     renderRoute('/')
     await waitFor(() => expect(screen.getByLabelText('location')).toHaveTextContent('/player'))
-    expect(screen.getByRole('heading', { name: 'Player route' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Player route' })).toBeInTheDocument()
   })
 
   it.each([
@@ -37,9 +37,9 @@ describe('application routes', () => {
     ['/player/admin-settings', 'Admin route'],
     ['/player/playlists', 'Playlists route'],
     ['/player/playlists/42', 'Playlist 42'],
-  ])('opens %s directly', (path, heading) => {
+  ])('opens %s directly', async (path, heading) => {
     renderRoute(path)
-    expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument()
   })
 
   it('redirects an unknown client URL instead of rendering a dead route', async () => {

@@ -40,7 +40,8 @@ describe('instance auth capabilities', () => {
     const signup = await screen.findByText('Sign up')
     fireEvent.click(signup)
     expect(screen.getByLabelText('Name')).toBeInTheDocument()
-    expect(screen.getByLabelText('Email')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Email')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument()
   })
 
   it('offers both configured login methods', async () => {
