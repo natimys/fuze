@@ -195,7 +195,7 @@ jobs:
       - name: Fresh install and backup/restore rehearsal
         run: |
           cd release-bundle
-          docker compose up -d
+          docker compose up -d --pull never
           for attempt in $(seq 1 60); do
             docker compose exec -T backend python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)" && break
             test "$attempt" -lt 60
@@ -209,7 +209,7 @@ jobs:
           docker compose stop frontend backend worker beat backup
           docker compose exec -T postgres psql -U fuze -d fuze -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
           docker compose run --rm backup restore "$archive"
-          docker compose up -d
+          docker compose up -d --pull never
           docker compose exec -T backend fuze rescue db-status --json | grep -q '"drift": false'
           docker compose down -v
       - uses: sigstore/cosign-installer@v3
