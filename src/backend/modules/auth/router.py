@@ -12,21 +12,21 @@ from .dependencies import (
     get_auth_service,
 )
 from .module import module
-from .schemas import KeyLogin, UserPublic, UserRegister, UserLogin
+from .schemas import KeyLogin, KeyRegistration, UserPublic, UserRegister, UserLogin
 from .service import AuthService
 from ..users.models import User
 
 router = APIRouter(prefix=module.router_prefix, tags=module.router_tags)
 
 
-@router.post("/register", response_model=UserPublic)
+@router.post("/register", response_model=KeyRegistration)
 async def register(
     data: UserRegister,
     _rate_limit: None = Depends(auth_rate_limit),
     auth_service: AuthService = Depends(get_auth_service),
 ):
-    user = await auth_service.register(data)
-    return user
+    user, access_key = await auth_service.register(data)
+    return KeyRegistration(user=UserPublic.model_validate(user), access_key=access_key)
 
 
 @router.get("/me", response_model=UserPublic)

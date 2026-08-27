@@ -1,7 +1,11 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from core.dependencies import current_active_user
 from modules.users.models import User
+from modules.admin.dependencies import get_config_service
+from modules.admin.service import ConfigService
 
 from .dependencies import get_playlist_service
 from .errors import PlaylistDomainError
@@ -19,6 +23,9 @@ from .schemas import (
     ImportResult,
     ImportSelection,
     ImportSource,
+    YandexDeviceAuthPoll,
+    YandexDeviceAuthResult,
+    YandexDeviceAuthStart,
 )
 from .service import PlaylistsService
 
@@ -27,6 +34,51 @@ router = APIRouter(prefix=module.router_prefix, tags=module.router_tags)
 
 def _raise_http(exc: PlaylistDomainError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+
+
+@router.post("/imports/yandex/auth/start", response_model=YandexDeviceAuthStart)
+async def start_yandex_device_auth(
+    _: User = Depends(current_active_user),
+    config_service: ConfigService = Depends(get_config_service),
+):
+    """Start Yandex's device flow without exposing OAuth application secrets."""
+    from yandex_music import ClientAsync
+
+    if not (await config_service.get_snapshot()).config.providers.yandex:
+        raise HTTPException(status_code=403, detail="provider_disabled")
+    try:
+        async with asyncio.timeout(15):
+            code = await ClientAsync().request_device_code(device_name="Fuze")
+        return YandexDeviceAuthStart(
+            device_code=code.device_code,
+            user_code=code.user_code,
+            verification_url=code.verification_url,
+            expires_in=code.expires_in,
+            interval=max(1, int(code.interval)),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="yandex_device_auth_unavailable") from exc
+
+
+@router.post("/imports/yandex/auth/poll", response_model=YandexDeviceAuthResult)
+async def poll_yandex_device_auth(
+    data: YandexDeviceAuthPoll,
+    _: User = Depends(current_active_user),
+    config_service: ConfigService = Depends(get_config_service),
+):
+    """Exchange a confirmed device code for the user's OAuth token."""
+    from yandex_music import ClientAsync
+
+    if not (await config_service.get_snapshot()).config.providers.yandex:
+        raise HTTPException(status_code=403, detail="provider_disabled")
+    try:
+        async with asyncio.timeout(15):
+            token = await ClientAsync().poll_device_token(data.device_code)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="yandex_device_auth_unavailable") from exc
+    if token is None:
+        return YandexDeviceAuthResult(status="pending")
+    return YandexDeviceAuthResult(status="authorized", token=token.access_token)
 
 
 @router.get("", response_model=list[PlaylistSummary])

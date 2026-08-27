@@ -1,8 +1,37 @@
+import base64
+import binascii
 from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from modules.tracks.schemas import TrackRead
+
+
+MAX_ARTWORK_BYTES = 1024 * 1024
+ALLOWED_ARTWORK_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+def _validate_artwork(value: str | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        header, encoded = value.split(",", 1)
+    except ValueError as exc:
+        raise ValueError("artwork must be an image data URL") from exc
+    if not header.startswith("data:") or not header.endswith(";base64"):
+        raise ValueError("artwork must be a base64 image data URL")
+    mime_type = header[5:-7].lower()
+    if mime_type not in ALLOWED_ARTWORK_MIME_TYPES:
+        raise ValueError("unsupported artwork MIME type")
+    try:
+        decoded = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("artwork contains invalid base64 data") from exc
+    if not decoded:
+        raise ValueError("artwork must not be empty")
+    if len(decoded) > MAX_ARTWORK_BYTES:
+        raise ValueError("artwork exceeds the 1 MiB limit")
+    return value
 
 
 def _strip_required(value: str) -> str:
@@ -30,6 +59,12 @@ class PlaylistCreate(BaseModel):
 class PlaylistUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=255)
+    label_style: str | None = Field(default=None, pattern="^(aged|archival|stripe|blue|yellow|minimal|redline|typed|white|green)$")
+    label_art: str | None = Field(default=None, max_length=1500000)
+    cover_art: str | None = Field(default=None, max_length=1500000)
+
+    _validate_label_art = field_validator("label_art")(_validate_artwork)
+    _validate_cover_art = field_validator("cover_art")(_validate_artwork)
 
     @field_validator("title")
     @classmethod
@@ -75,6 +110,9 @@ class PlaylistSummary(BaseModel):
     owner_id: int
     title: str
     description: str | None
+    label_style: str
+    label_art: str | None
+    cover_art: str | None
     tracks_count: int
     created_at: datetime
     updated_at: datetime
@@ -99,6 +137,23 @@ class ImportSource(BaseModel):
 
 class ImportConnect(BaseModel):
     token: str = Field(min_length=10, max_length=4096)
+
+
+class YandexDeviceAuthStart(BaseModel):
+    device_code: str
+    user_code: str
+    verification_url: str
+    expires_in: int
+    interval: int
+
+
+class YandexDeviceAuthPoll(BaseModel):
+    device_code: str = Field(min_length=10, max_length=4096)
+
+
+class YandexDeviceAuthResult(BaseModel):
+    status: str = Field(pattern="^(pending|authorized)$")
+    token: str | None = None
 
 
 class ImportSelection(BaseModel):

@@ -32,6 +32,10 @@ def _make_jwt_security() -> AuthX:
         JWT_COOKIE_HTTP_ONLY=True,
         JWT_COOKIE_SAMESITE=settings.COOKIE_SAMESITE,
         JWT_COOKIE_SECURE=settings.COOKIE_SECURE,
+        # Persist the browser session across application restarts. The tokens
+        # remain bounded by their own JWT expirations and server-side session
+        # revocation; this only controls how long the WebView keeps the cookies.
+        JWT_COOKIE_MAX_AGE=settings.REFRESH_TOKEN_EXPIRES * 24 * 60 * 60,
         JWT_ACCESS_TOKEN_EXPIRES=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRES),
         JWT_REFRESH_TOKEN_EXPIRES=timedelta(days=settings.REFRESH_TOKEN_EXPIRES),
     )

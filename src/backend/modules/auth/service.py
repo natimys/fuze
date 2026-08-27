@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from authx import TokenPayload
 
 from core.exceptions import CapabilityDisabled, InvalidAuthCredentials
+from core.enums import UserRole
 from core.instance_config import get_fuze_config
 from core.security import jwt_security, verify_password
 from core.settings import get_settings
@@ -55,14 +56,13 @@ class AuthService:
         )
         return access_token, refresh_token
 
-    async def register(self, data: UserRegister) -> User:
+    async def register(self, data: UserRegister) -> tuple[User, str]:
         config = await self._config()
         if not config.auth.registration:
             raise CapabilityDisabled("registration_disabled")
-        user = await self.user_service.register(
-            email=data.email, name=data.name, password=data.password.get_secret_value()
+        return await self.user_service.create_key_user(
+            name=data.name, role=UserRole.USER, label="registration"
         )
-        return user
 
     async def authenticate(self, data: UserLogin) -> tuple[User, str, str]:
         if (await self._config()).auth.mode not in {"password", "both"}:

@@ -1,8 +1,8 @@
 [auth]
 # password: вход по email и паролю
-# key: только вход по ключу; registration должна быть false
+# key: только вход по ключу
 # both: доступны оба способа входа
-mode = "password"
+mode = "both"
 registration = true
 
 [features]

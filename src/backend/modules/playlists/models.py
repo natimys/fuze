@@ -6,6 +6,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -27,6 +28,9 @@ class Playlist(Base):
     )
     title: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    label_style: Mapped[str] = mapped_column(String(24), nullable=False, default="aged", server_default="aged")
+    label_art: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cover_art: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )

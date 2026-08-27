@@ -13,11 +13,10 @@ class AuthConfig(BaseModel):
     registration: bool = False
 
     @model_validator(mode="after")
-    def registration_requires_password_login(self):
-        if self.registration and self.mode == "key":
-            raise ValueError("registration=true requires auth.mode=password or both")
+    def registration_requires_key_login(self):
+        if self.registration and self.mode == "password":
+            raise ValueError("registration=true requires auth.mode=key or both")
         return self
-
 
 class FeaturesConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")

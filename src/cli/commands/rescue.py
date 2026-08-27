@@ -1,10 +1,13 @@
 import json
+import hashlib
+import secrets
 import socket
 import sys
 import tomllib
 from getpass import getpass
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import typer
 from pydantic import EmailStr, TypeAdapter, ValidationError
@@ -63,6 +66,11 @@ def _hash_password(value: str) -> str:
     return hash_password(value)
 
 
+def _new_access_key() -> tuple[str, str]:
+    secret = f"fuze_{secrets.token_urlsafe(32)}"
+    return secret, hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+
 @app.command("bootstrap-admin")
 def bootstrap_admin(
     email: str | None = typer.Option(None, "--email"),
@@ -118,6 +126,56 @@ def reset_admin_password(
                 out.fail("admin_not_found", "Active administrator not found", 3)
             connection.execute(text("UPDATE auth_sessions SET revoked_at=now() WHERE user_id=:user_id AND revoked_at IS NULL"), {"user_id": user_id})
         out.emit({"status": "ok", "sessions_revoked": True}, "Password reset and active sessions revoked")
+    finally:
+        engine.dispose()
+
+
+@app.command("reset-access-key")
+def reset_access_key(
+    user_id: int = typer.Argument(..., min=1, help="User ID"),
+    label: str = typer.Option("recovery", help="Replacement key label"),
+    yes: bool = typer.Option(False, "--yes", help="Skip confirmation"),
+    json_mode: bool = typer.Option(False, "--json"),
+    no_color: bool = typer.Option(False, "--no-color"),
+):
+    """Revoke a user's keys and sessions, then issue a replacement key."""
+    out = Output(json_mode)
+    label = label.strip()
+    if not label or len(label) > 100:
+        out.fail("invalid_input", "Label must contain between 1 and 100 characters", 2)
+    if not yes and not typer.confirm(
+        f"Revoke all access keys and active sessions for user {user_id}?"
+    ):
+        out.fail("cancelled", "Access key recovery cancelled", 2)
+    secret, key_hash = _new_access_key()
+    key_id = uuid4()
+    engine = _engine()
+    try:
+        with engine.begin() as connection:
+            user = connection.execute(
+                text("SELECT id, is_active FROM users WHERE id=:user_id FOR UPDATE"),
+                {"user_id": user_id},
+            ).mappings().one_or_none()
+            if user is None:
+                out.fail("user_not_found", "User not found", 3)
+            if not user["is_active"]:
+                out.fail("user_inactive", "User is inactive", 3)
+            connection.execute(
+                text("UPDATE access_keys SET revoked_at=now() WHERE user_id=:user_id AND revoked_at IS NULL"),
+                {"user_id": user_id},
+            )
+            connection.execute(
+                text("UPDATE auth_sessions SET revoked_at=now() WHERE user_id=:user_id AND revoked_at IS NULL"),
+                {"user_id": user_id},
+            )
+            connection.execute(
+                text("INSERT INTO access_keys (id, user_id, label, key_hash) VALUES (:id, :user_id, :label, :key_hash)"),
+                {"id": key_id, "user_id": user_id, "label": label, "key_hash": key_hash},
+            )
+        out.emit(
+            {"status": "ok", "user_id": user_id, "key_id": key_id, "access_key": secret, "sessions_revoked": True},
+            f"Access key reset for user {user_id}; all previous keys and sessions were revoked.\nStore this key now; it will not be shown again:\n{secret}",
+        )
     finally:
         engine.dispose()
 
