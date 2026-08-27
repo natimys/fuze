@@ -1,9 +1,25 @@
-import type { AdminSettings, AdminSettingsWrite, KeyLogin, KeyUserCreate, KeyUserCreated, PlaylistCreate, PlaylistDetail, PlaylistReorder, PlaylistSummary, PlaylistTrack, PlaylistUpdate, ProviderTest, PublicConfig, SystemStatus, TrackAcquireResponse, TrackDownloadBulkResponse, TrackDownloadDescriptor, TrackRead, TrackSearchResponse, TrackSource, TrackStreamResponse, UserCreate, UserLogin, UserPublic, UserRegister, UsersResponse, UserUpdate } from './types'
+import type { AdminSettings, AdminSettingsWrite, KeyLogin, KeyRegistration, KeyUserCreate, KeyUserCreated, PlaylistCreate, PlaylistDetail, PlaylistReorder, PlaylistSummary, PlaylistTrack, PlaylistUpdate, ProviderTest, PublicConfig, SystemStatus, TrackAcquireResponse, TrackDownloadBulkResponse, TrackDownloadDescriptor, TrackRead, TrackSearchResponse, TrackSource, TrackStreamResponse, UserCreate, UserLogin, UserPublic, UserRegister, UsersResponse, UserUpdate, YandexDeviceAuthResult, YandexDeviceAuthStart } from './types'
 import type { ImportedTrack, ImportResult, ImportSource } from './types'
 import { getApiBaseUrl } from '@/services/runtimeConfig'
+import { platform } from '@/platform'
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 let refreshPromise: Promise<boolean> | null = null
+
+async function apiFetch(url: string, options: RequestInit): Promise<Response> {
+  if (!__FUZE_DESKTOP_BUILD__ || !platform.isNative) return fetch(url, options)
+  const { invoke } = await import('@tauri-apps/api/core')
+  const headers = Object.fromEntries(new Headers(options.headers).entries())
+  const result = await invoke<{ status: number; headers: Record<string, string>; body: string }>('api_request', {
+    request: {
+      url,
+      method: options.method ?? 'GET',
+      headers,
+      body: typeof options.body === 'string' ? options.body : null,
+    },
+  })
+  return new Response(result.body, { status: result.status, headers: result.headers })
+}
 
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number) { super(message); this.name = 'ApiError' }
@@ -50,7 +66,7 @@ async function tryRefresh(): Promise<boolean> {
       const headers = headersFor(options)
       const refreshCsrf = cookie('csrf_refresh_token')
       if (refreshCsrf) headers.set('X-CSRF-TOKEN', decodeURIComponent(refreshCsrf))
-      const res = await fetch(`${getApiBaseUrl()}/auth/refresh`, { ...options, credentials: 'include', headers })
+      const res = await apiFetch(`${getApiBaseUrl()}/auth/refresh`, { ...options, credentials: 'include', headers })
       return res.ok
     } catch { return false } finally { refreshPromise = null }
   })()
@@ -60,9 +76,13 @@ async function tryRefresh(): Promise<boolean> {
 async function request<T>(path: string, options: RequestInit = {}, protectedRequest = true, retried = false): Promise<T> {
   let res: Response
   try {
-    res = await fetch(`${getApiBaseUrl()}${path}`, { ...options, credentials: 'include', headers: headersFor(options) })
+    res = await apiFetch(`${getApiBaseUrl()}${path}`, { ...options, credentials: 'include', headers: headersFor(options) })
   } catch (reason) {
     if (reason && typeof reason === 'object' && 'name' in reason && reason.name === 'AbortError') throw reason
+    if (platform.isNative) {
+      const detail = typeof reason === 'string' ? reason : reason instanceof Error ? reason.message : String(reason)
+      throw new ApiError(`Connection failed: ${detail}`, 0)
+    }
     throw new ApiError('Network unavailable. Check your connection and try again.', 0)
   }
   if (res.status === 401 && protectedRequest) {
@@ -77,7 +97,7 @@ async function request<T>(path: string, options: RequestInit = {}, protectedRequ
 export const api = {
   config: () => request<PublicConfig>('/config', {}, false),
   auth: {
-    register: (data: UserRegister) => request<UserPublic>('/auth/register', { method: 'POST', body: JSON.stringify(data) }, false),
+    register: (data: UserRegister) => request<KeyRegistration>('/auth/register', { method: 'POST', body: JSON.stringify(data) }, false),
     login: (data: UserLogin) => request<UserPublic>('/auth/login', { method: 'POST', body: JSON.stringify(data) }, false),
     keyLogin: (data: KeyLogin) => request<UserPublic>('/auth/key-login', { method: 'POST', body: JSON.stringify(data) }, false),
     logout: () => request<void>('/auth/logout', { method: 'POST' }),
@@ -100,6 +120,8 @@ export const api = {
     addItem: (playlistId: number, trackId: number) => request<PlaylistTrack>(`/playlists/${playlistId}/items`, { method: 'POST', body: JSON.stringify({ track_id: trackId }) }),
     removeItem: (playlistId: number, itemId: number) => request<void>(`/playlists/${playlistId}/items/${itemId}`, { method: 'DELETE' }),
     reorder: (playlistId: number, data: PlaylistReorder) => request<PlaylistDetail>(`/playlists/${playlistId}/items/reorder`, { method: 'PUT', body: JSON.stringify(data) }),
+    startYandexAuth: () => request<YandexDeviceAuthStart>('/playlists/imports/yandex/auth/start', { method: 'POST' }),
+    pollYandexAuth: (deviceCode: string) => request<YandexDeviceAuthResult>('/playlists/imports/yandex/auth/poll', { method: 'POST', body: JSON.stringify({ device_code: deviceCode }) }),
     yandexSources: (token: string) => request<ImportSource[]>('/playlists/imports/yandex/playlists', { method: 'POST', body: JSON.stringify({ token }) }),
     importYandex: (token: string, playlistIds: string[]) => request<ImportResult>('/playlists/imports/yandex', { method: 'POST', body: JSON.stringify({ token, playlist_ids: playlistIds }) }),
     importFile: (title: string, source: TrackSource, tracks: ImportedTrack[]) => request<ImportResult>('/playlists/imports/file', { method: 'POST', body: JSON.stringify({ title, source, tracks }) }),

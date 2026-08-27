@@ -1,15 +1,16 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Outlet, useLocation } from 'react-router-dom'
+import { useLocation, useOutlet } from 'react-router-dom'
 import { AudioEngine } from '@/components/player/AudioEngine'
 import { MiniPlayer } from '@/components/player/MiniPlayer'
 
 export default function PlayerLayout() {
   const location = useLocation()
+  const outlet = useOutlet()
   const reduceMotion = useReducedMotion()
 
   return <>
     <AudioEngine />
-    <AnimatePresence mode="sync" initial={false}>
+    <AnimatePresence mode="wait" initial={false}>
       <motion.div
         key={location.pathname}
         className="fuze-route-stage"
@@ -18,7 +19,7 @@ export default function PlayerLayout() {
         exit={reduceMotion ? undefined : { opacity: 0 }}
         transition={{ duration: reduceMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
       >
-        <Outlet />
+        {outlet}
       </motion.div>
     </AnimatePresence>
     <AnimatePresence>

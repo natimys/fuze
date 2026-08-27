@@ -6,6 +6,7 @@ import { ArrowSquareOut, Check, MagnifyingGlass, MusicNote, Play, Plus, Spinner,
 import { api } from '@/lib/api'
 import { usePlayerStore } from '@/lib/store'
 import type { TrackAvailability, TrackRead, TrackSearchResult } from '@/lib/types'
+import { TrackContextMenu, useTrackContextMenu } from '@/components/tracks/TrackContextMenu'
 
 interface Props {
   isOpen: boolean
@@ -35,6 +36,7 @@ export function SearchModal({ isOpen, onClose, onTrackReady, destination = 'queu
   const addToQueue = usePlayerStore((s) => s.addToQueue)
   const setCurrentTrack = usePlayerStore((s) => s.setCurrentTrack)
   const config = usePlayerStore((s) => s.config)
+  const trackMenu = useTrackContextMenu()
 
   const close = useCallback(() => {
     searchController.current?.abort()
@@ -166,7 +168,7 @@ export function SearchModal({ isOpen, onClose, onTrackReady, destination = 'queu
   const spotifyResults = results.filter((track) => track.source === 'spotify')
   const renderRows = (items: TrackSearchResult[]) => items.map((track) => {
     const state = busy[track.key] ?? track.availability
-    return <div key={track.key} className="fuze-search__row group flex items-center gap-3 p-2 rounded-lg hover:bg-hover">
+    return <div key={track.key} onContextMenu={(event) => trackMenu.openMenu(event, track)} className="fuze-search__row group flex items-center gap-3 p-2 rounded-lg hover:bg-hover">
       <button type="button" onClick={() => void act(track, true)} disabled={Boolean(busy[track.key]) || track.capability === 'catalog'} className="flex flex-1 min-w-0 items-center gap-3 text-left disabled:opacity-60" aria-label={`${track.capability === 'catalog' ? 'Catalog result' : track.capability === 'external' ? 'Open' : destination === 'playlist' ? 'Add' : 'Play'} ${track.title}`}>
         <div className="w-10 h-10 rounded bg-surface-raised overflow-hidden flex items-center justify-center">{track.cover_url ? <img src={track.cover_url} alt="" className="w-full h-full object-cover" /> : <MusicNote size={17} className="text-text-muted" aria-hidden="true" />}</div>
         <div className="flex-1 min-w-0">
@@ -180,7 +182,7 @@ export function SearchModal({ isOpen, onClose, onTrackReady, destination = 'queu
     </div>
   })
 
-  return <AnimatePresence>{isOpen && <>
+  return <><AnimatePresence>{isOpen && <>
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60" onClick={close} aria-hidden="true" />
     <motion.div ref={panelRef} role="dialog" aria-modal="true" aria-label={destination === 'playlist' ? 'Search music for playlist' : 'Search music'} initial={{ opacity: 0, scale: .98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="fixed top-[max(1rem,8%)] left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-[560px]">
       <div className="fuze-search bg-surface rounded-xl border border-border shadow-2xl overflow-hidden">
@@ -208,5 +210,5 @@ export function SearchModal({ isOpen, onClose, onTrackReady, destination = 'queu
         </div>
       </div>
     </motion.div>
-  </>}</AnimatePresence>
+  </>}</AnimatePresence><TrackContextMenu menu={trackMenu.menu} onClose={trackMenu.closeMenu} /></>
 }

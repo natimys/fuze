@@ -1,9 +1,10 @@
 export type UserRole = 'admin' | 'user'
 export interface UserPublic { id: number; name: string; email: string | null; role: UserRole; is_active: boolean }
 export type UserRead = UserPublic
-export interface UserRegister { name: string; email: string; password: string }
+export interface UserRegister { name: string }
 export interface UserLogin { email: string; password: string }
 export interface KeyLogin { key: string }
+export interface KeyRegistration { user: UserPublic; access_key: string }
 
 export interface PublicConfig {
   instance_name: string
@@ -51,6 +52,9 @@ export interface UserUpdate { name?: string; email?: string; password?: string; 
 export interface ProviderTest { status: 'ok' | 'disabled' | 'unavailable' | 'not_configured'; latency_ms: number; message: string }
 
 export type TrackSource = 'yandex' | 'youtube' | 'spotify'
+
+export interface YandexDeviceAuthStart { device_code: string; user_code: string; verification_url: string; expires_in: number; interval: number }
+export interface YandexDeviceAuthResult { status: 'pending' | 'authorized'; token?: string | null }
 export type TrackCapability = 'acquire' | 'external' | 'catalog'
 export type TrackAvailability = 'remote' | 'queued' | 'downloading' | 'ready' | 'failed'
 
@@ -119,6 +123,9 @@ export interface PlaylistSummary {
   owner_id: number
   title: string
   description: string | null
+  label_style: string
+  label_art: string | null
+  cover_art: string | null
   tracks_count: number
   created_at: string
   updated_at: string
@@ -134,8 +141,8 @@ export interface PlaylistDetail extends PlaylistSummary {
   items: PlaylistTrack[]
 }
 
-export interface PlaylistCreate { title: string; description?: string | null }
-export interface PlaylistUpdate { title?: string; description?: string | null }
+export interface PlaylistCreate { title: string; description?: string | null; label_style?: string; label_art?: string | null; cover_art?: string | null }
+export interface PlaylistUpdate { title?: string; description?: string | null; label_style?: string; label_art?: string | null; cover_art?: string | null }
 export interface PlaylistReorder { item_ids: number[] }
 export interface ImportSource { id: string; title: string; tracks_count: number }
 export interface ImportedTrack { source_id: string; title: string; artist: string; album?: string | null; year?: number | null; duration_ms?: number | null; cover_url?: string | null }

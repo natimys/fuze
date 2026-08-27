@@ -11,16 +11,17 @@ import {
   Gear,
   ShieldCheck,
   SignOut,
-  MusicNote,
   DownloadSimple,
   Download,
+  MagnifyingGlass,
+  X,
 } from '@phosphor-icons/react'
 import { motion, AnimatePresence } from 'motion/react'
 
 interface SidebarProps {
   isOpen: boolean
   onClose: () => void
-  inline?: boolean
+  onSearch?: () => void
 }
 
 const navItems = [
@@ -30,7 +31,7 @@ const navItems = [
   { icon: Download, label: 'Import music', href: '/player/playlists?import=1' },
 ]
 
-export function Sidebar({ isOpen, onClose, inline = false }: SidebarProps) {
+export function Sidebar({ isOpen, onClose, onSearch }: SidebarProps) {
   const user = usePlayerStore((s) => s.user)
   const setUser = usePlayerStore((s) => s.setUser)
   const navigate = useNavigate()
@@ -70,7 +71,6 @@ export function Sidebar({ isOpen, onClose, inline = false }: SidebarProps) {
 
   return (
     <>
-      {inline && <nav className="fuze-nav" aria-label="Application navigation">{navItems.map((item) => <Link key={item.href} to={item.href} aria-current={pathname === item.href || (item.href !== '/player' && pathname.startsWith(`${item.href}/`)) ? 'page' : undefined}><item.icon size={18} /><span>{item.label}</span></Link>)}<Link to="/player/settings" aria-current={pathname === '/player/settings' ? 'page' : undefined} className="fuze-nav__bottom"><Gear size={18} /><span>Settings</span></Link>{user?.role === 'admin' && <Link to="/player/admin-settings" aria-current={pathname.startsWith('/player/admin-settings') ? 'page' : undefined}><ShieldCheck size={18} /><span>Admin</span></Link>}</nav>}
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -95,56 +95,53 @@ export function Sidebar({ isOpen, onClose, inline = false }: SidebarProps) {
             animate={{ x: 0 }}
             exit={{ x: -280 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className="fixed top-0 left-0 bottom-0 z-50 w-[280px] bg-surface border-r border-border flex flex-col"
+            className="fuze-sidebar"
           >
-            <div className="px-6 py-5 border-b border-border">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-surface-raised flex items-center justify-center">
-                  <MusicNote size={16} weight="fill" className="text-text-primary" />
-                </div>
-                <span className="text-sm font-semibold text-text-primary tracking-tight">Fuze</span>
-              </div>
-            </div>
+            <header className="fuze-sidebar__header"><Link to="/player" onClick={onClose}><img src="/brand/fuze-lockup.svg" alt="Fuze" /></Link><button type="button" onClick={onClose} aria-label="Close navigation"><X /></button></header>
 
-            <nav className="flex-1 py-3 px-3">
+            <nav className="fuze-sidebar__nav" aria-label="Application navigation">
+              <span className="fuze-sidebar__eyebrow">Library</span>
               {navItems.map((item) => (
                 <Link
                   key={item.label}
                   to={item.href}
                   aria-current={pathname === item.href || (item.href !== '/player' && pathname.startsWith(`${item.href}/`)) ? 'page' : undefined}
                   onClick={onClose}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-text-primary ${pathname === item.href || (item.href !== '/player' && pathname.startsWith(`${item.href}/`)) ? 'bg-hover-strong text-text-primary' : 'text-text-secondary hover:text-text-primary hover:bg-hover'}`}
+                  className={pathname === item.href || (item.href !== '/player' && pathname.startsWith(`${item.href}/`)) ? 'active' : undefined}
                 >
                   <item.icon size={18} weight="regular" />
                   <span>{item.label}</span>
                 </Link>
               ))}
-              <div className="mt-2 flex items-center gap-3 px-3 py-2 text-xs text-text-muted" aria-disabled="true"><Heart size={16} aria-hidden="true" /><span>Favorites <span className="sr-only">is </span>(coming later)</span></div>
-              <Link to="/player/settings" onClick={onClose} aria-current={pathname === '/player/settings' ? 'page' : undefined} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${pathname === '/player/settings' ? 'bg-hover-strong text-text-primary' : 'text-text-secondary hover:bg-hover hover:text-text-primary'}`}><Gear size={18} /><span>Settings</span></Link>
-              {user?.role === 'admin' && <Link to="/player/admin-settings" onClick={onClose} aria-current={pathname.startsWith('/player/admin-settings') ? 'page' : undefined} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${pathname.startsWith('/player/admin-settings') ? 'bg-hover-strong text-text-primary' : 'text-text-secondary hover:bg-hover hover:text-text-primary'}`}><ShieldCheck size={18} /><span>Admin Settings</span></Link>}
+              {onSearch && <button type="button" onClick={() => { onClose(); onSearch() }}><MagnifyingGlass size={18} /><span>Search</span><kbd>⌘ K</kbd></button>}
+              <div className="fuze-sidebar__disabled" aria-disabled="true"><Heart size={18} aria-hidden="true" /><span>Favorites</span><small>soon</small></div>
+              <span className="fuze-sidebar__eyebrow">Fuze</span>
+              <Link to="/player/settings" onClick={onClose} aria-current={pathname === '/player/settings' ? 'page' : undefined} className={pathname === '/player/settings' ? 'active' : undefined}><Gear size={18} /><span>Settings</span></Link>
+              {user?.role === 'admin' && <Link to="/player/admin-settings" onClick={onClose} aria-current={pathname.startsWith('/player/admin-settings') ? 'page' : undefined} className={pathname.startsWith('/player/admin-settings') ? 'active' : undefined}><ShieldCheck size={18} /><span>Admin Settings</span></Link>}
             </nav>
 
-            <div className="p-3 border-t border-border">
+            <footer className="fuze-sidebar__footer">
               {user && (
-                <div className="flex items-center gap-3 px-3 py-2">
-                  <div className="w-8 h-8 rounded-full bg-surface-raised flex items-center justify-center text-xs font-semibold text-text-secondary">
+                <div className="fuze-sidebar__user">
+                  <div className="fuze-sidebar__avatar">
                     {user.name[0]?.toUpperCase()}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-text-primary truncate">{user.name}</div>
-                    {user.email && <div className="text-xs text-text-muted truncate">{user.email}</div>}
+                  <div className="fuze-sidebar__identity">
+                    <b>{user.name}</b>
+                    {user.email && <small>{user.email}</small>}
                   </div>
                   <button
                     onClick={handleLogout}
-                    className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-hover transition-colors"
+                    className="fuze-sidebar__logout"
+                    aria-label="Sign out"
                     title="Sign out"
                   >
                     <SignOut size={16} weight="regular" />
                   </button>
                 </div>
               )}
-              {logoutError && <p role="alert" className="px-3 pb-2 text-xs text-red-400">{logoutError}</p>}
-            </div>
+              {logoutError && <p role="alert" className="fuze-sidebar__error">{logoutError}</p>}
+            </footer>
           </motion.aside>
         )}
       </AnimatePresence>

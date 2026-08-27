@@ -15,6 +15,12 @@ function normalizeHttpUrl(value: string): string {
   const url = new URL(withProtocol)
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Only HTTP and HTTPS addresses are supported')
   if (url.username || url.password || url.search || url.hash) throw new Error('Enter a domain without credentials, query parameters, or a fragment')
+  // localhost and 127.0.0.1 are different cookie sites. Keep local desktop-dev
+  // instance URLs on the same host as the WebView so auth cookies survive the
+  // navigation from key-login to protected API requests.
+  if (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname) && ['localhost', '127.0.0.1'].includes(url.hostname)) {
+    url.hostname = window.location.hostname
+  }
   return trimSlash(url.toString())
 }
 

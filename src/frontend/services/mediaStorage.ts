@@ -45,4 +45,4 @@ class NativeMediaStorage implements MediaStorage {
   }
 }
 
-export const mediaStorage: MediaStorage = platform.canUseNativeFilesystem ? new NativeMediaStorage() : new BrowserMediaStorage()
+export const mediaStorage: MediaStorage = __FUZE_DESKTOP_BUILD__ && platform.canUseNativeFilesystem ? new NativeMediaStorage() : new BrowserMediaStorage()

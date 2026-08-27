@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://127.0.0.1:3000",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build:desktop"
   },
   "app": {
     "windows": [
@@ -17,6 +17,8 @@
         "height": 900,
         "minWidth": 360,
         "minHeight": 640,
+        "backgroundColor": "#0a0a0b",
+        "decorations": false,
         "resizable": true,
         "fullscreen": false
       }

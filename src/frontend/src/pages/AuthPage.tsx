@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { motion } from 'motion/react'
 import type { PublicConfig } from '@/lib/types'
+import { FuzeButton, FuzeField, FuzeInput } from '@/components/fuze'
 
 export default function AuthPage() {
   const navigate = useNavigate()
@@ -13,6 +14,7 @@ export default function AuthPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [accessKey, setAccessKey] = useState('')
+  const [generatedKey, setGeneratedKey] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -33,8 +35,12 @@ export default function AuthPage() {
         if (method === 'key') await api.auth.keyLogin({ key: accessKey })
         else await api.auth.login({ email, password })
       } else {
-        await api.auth.register({ name, email, password })
-        await api.auth.login({ email, password })
+        const registration = await api.auth.register({ name })
+        setGeneratedKey(registration.access_key)
+        setAccessKey(registration.access_key)
+        setMethod('key')
+        setIsLogin(true)
+        return
       }
       navigate('/')
     } catch (err) {
@@ -45,56 +51,57 @@ export default function AuthPage() {
   }
 
   if (!config) {
-    return <div className="flex min-h-dvh items-center justify-center bg-bg p-4 text-sm text-text-muted" role="status">{error || 'Loading instance configuration…'}</div>
+    return <div className="fuze-service-state" role="status">{error || 'Loading instance configuration…'}</div>
   }
 
   if (config.setup_required) {
-    return <div className="flex min-h-dvh items-center justify-center bg-bg p-4"><div className="w-full max-w-lg rounded-xl border border-border bg-surface p-8"><h1 className="text-xl font-semibold">Administrator setup required</h1><p className="mt-2 text-sm text-text-muted">Create the first administrator from the installation directory, then reload this page.</p><code className="mt-5 block select-text overflow-x-auto rounded-lg bg-bg p-4 text-xs text-text-secondary">docker compose run --rm backend fuze rescue bootstrap-admin</code></div></div>
+    return <div className="fuze-service-screen"><section className="fuze-service-card fuze-service-card--wide"><span className="fuze-service-eyebrow">INSTANCE SETUP</span><h1>Administrator setup required</h1><p>Create the first administrator from the installation directory, then reload this page.</p><code className="fuze-code">docker compose run --rm backend fuze rescue bootstrap-admin</code></section></div>
   }
 
   const isKeyOnly = config.auth.mode === 'key'
 
   return (
-    <div className="flex items-center justify-center min-h-dvh bg-bg p-4">
+    <div className="fuze-service-screen">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="w-full max-w-[360px]"
+        className="fuze-service-wrap"
       >
-        <div className="bg-surface rounded-xl border border-border p-8">
-          <div className="mb-8">
-            <h1 className="text-xl font-semibold text-text-primary tracking-tight">
+        <section className="fuze-service-card">
+          <img className="fuze-service-logo" src="/brand/fuze-lockup.svg" alt="Fuze" />
+          <header className="fuze-service-header">
+            <span className="fuze-service-eyebrow">YOUR MUSIC, YOUR INSTANCE</span>
+            <h1>
               {isLogin ? (isKeyOnly ? 'Enter access key' : 'Welcome back') : 'Create account'}
             </h1>
-            <p className="text-sm text-text-muted mt-1">
+            <p>
               {isLogin
                 ? (isKeyOnly ? 'Use your Fuze access key to continue' : 'Sign in to your Fuze account')
                 : 'Create your Fuze account'}
             </p>
-          </div>
+          </header>
 
           {error && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
-              className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 mb-4"
+              className="fuze-service-alert"
             >
-              <p className="text-sm text-red-400">{error}</p>
+              <p>{error}</p>
             </motion.div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {isLogin && config?.auth.mode === 'both' && <div className="grid grid-cols-2 gap-1 rounded-lg bg-hover-strong p-1" role="group" aria-label="Sign-in method">
-              <button type="button" onClick={() => setMethod('password')} className={`h-9 rounded-md text-sm ${method === 'password' ? 'bg-surface-raised text-text-primary' : 'text-text-muted'}`}>Password</button>
-              <button type="button" onClick={() => setMethod('key')} className={`h-9 rounded-md text-sm ${method === 'key' ? 'bg-surface-raised text-text-primary' : 'text-text-muted'}`}>Access key</button>
+          {generatedKey && <div className="fuze-service-alert" role="status"><p>Access key created. Store it now; it will not be shown again.</p><code className="fuze-code">{generatedKey}</code><FuzeButton type="button" variant="secondary" onClick={() => void navigator.clipboard.writeText(generatedKey)}>Copy key</FuzeButton></div>}
+
+          <form onSubmit={handleSubmit} className="fuze-service-form">
+            {isLogin && config?.auth.mode === 'both' && <div className="fuze-segmented" role="group" aria-label="Sign-in method">
+              <button type="button" onClick={() => setMethod('password')} aria-pressed={method === 'password'}>Password</button>
+              <button type="button" onClick={() => setMethod('key')} aria-pressed={method === 'key'}>Access key</button>
             </div>}
             {!isLogin && (
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-text-secondary mb-1.5">
-                  Name
-                </label>
-                <input
+              <FuzeField label="Name">
+                <FuzeInput
                   id="name"
                   type="text"
                   placeholder="Your name"
@@ -103,31 +110,23 @@ export default function AuthPage() {
                   required
                   minLength={1}
                   maxLength={100}
-                  className="w-full h-10 bg-hover-strong border border-border rounded-lg px-3 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-accent-dim transition-colors"
                 />
-              </div>
+              </FuzeField>
             )}
 
-            {method === 'password' && <div>
-              <label htmlFor="email" className="block text-sm font-medium text-text-secondary mb-1.5">
-                Email
-              </label>
-              <input
+            {isLogin && method === 'password' && <FuzeField label="Email">
+              <FuzeInput
                 id="email"
                 type="email"
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full h-10 bg-hover-strong border border-border rounded-lg px-3 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-accent-dim transition-colors"
               />
-            </div>}
+            </FuzeField>}
 
-            {method === 'password' && <div>
-              <label htmlFor="password" className="block text-sm font-medium text-text-secondary mb-1.5">
-                Password
-              </label>
-              <input
+            {isLogin && method === 'password' && <FuzeField label="Password">
+              <FuzeInput
                 id="password"
                 type="password"
                 placeholder="* * * * * * * *"
@@ -136,35 +135,27 @@ export default function AuthPage() {
                 required
                 minLength={8}
                 maxLength={128}
-                className="w-full h-10 bg-hover-strong border border-border rounded-lg px-3 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-accent-dim transition-colors"
               />
-            </div>}
+            </FuzeField>}
 
-            {isLogin && method === 'key' && <div>
-              <label htmlFor="access-key" className="block text-sm font-medium text-text-secondary mb-1.5">Access key</label>
-              <input id="access-key" type="password" autoComplete="off" value={accessKey} onChange={(e) => setAccessKey(e.target.value)} required minLength={32} maxLength={512} className="w-full h-10 bg-hover-strong border border-border rounded-lg px-3 text-sm text-text-primary outline-none focus:border-accent-dim transition-colors" />
-            </div>}
+            {isLogin && method === 'key' && <FuzeField label="Access key"><FuzeInput id="access-key" type="password" autoComplete="off" value={accessKey} onChange={(e) => setAccessKey(e.target.value)} required minLength={32} maxLength={512} /></FuzeField>}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full h-10 bg-hover-strong hover:bg-surface-hover text-text-primary rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
-            >
+            <FuzeButton type="submit" variant="primary" disabled={loading} className="fuze-service-submit">
               {loading ? 'Loading...' : isLogin ? (method === 'key' ? 'Continue with key' : 'Sign in') : 'Create account'}
-            </button>
+            </FuzeButton>
           </form>
 
-          {config?.auth.registration && method === 'password' && <div className="mt-6 text-center text-sm text-text-muted">
+          {config?.auth.registration && <div className="fuze-service-switch">
             {isLogin ? "Don't have an account? " : 'Already have an account? '}
             <button
               type="button"
-              onClick={() => { setIsLogin(!isLogin); setError('') }}
-              className="text-text-secondary hover:text-text-primary transition-colors"
+              onClick={() => { setIsLogin(!isLogin); setGeneratedKey(''); setError('') }}
+              className="fuze-service-link"
             >
               {isLogin ? 'Sign up' : 'Sign in'}
             </button>
           </div>}
-        </div>
+        </section>
       </motion.div>
     </div>
   )

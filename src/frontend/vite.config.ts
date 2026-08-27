@@ -6,6 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
+    define: { __FUZE_DESKTOP_BUILD__: JSON.stringify(mode === 'desktop') },
     plugins: [react(), VitePWA({
       registerType: 'prompt',
       includeAssets: ['brand/favicon.ico', 'brand/favicon-32.png'],

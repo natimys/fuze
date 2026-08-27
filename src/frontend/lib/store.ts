@@ -8,8 +8,9 @@ interface Store {
   isShuffled: boolean; isRepeating: boolean; isLoading: boolean; playbackError: string | null
   user: UserPublic | null; config: PublicConfig | null; hydrated: boolean
   setQueue: (v: TrackSearchResult[], mode?: 'manual' | 'playlist') => void; addToQueue: (v: TrackSearchResult) => void
+  playNextTrack: (v: TrackSearchResult) => void; reorderQueue: (from: number, to: number) => void
   updateQueueTrack: (key: string, patch: Partial<TrackSearchResult>) => void
-  removeFromQueue: (key: string) => void; setCurrentTrack: (v: TrackSearchResult | null) => void
+  removeFromQueue: (key: string) => void; clearQueue: () => void; setCurrentTrack: (v: TrackSearchResult | null) => void
   setIsPlaying: (v: boolean) => void; togglePlay: () => void; setCurrentTime: (v: number) => void
   setDuration: (v: number) => void; setVolume: (v: number) => void; toggleMute: () => void
   toggleShuffle: () => void; toggleRepeat: () => void; setIsLoading: (v: boolean) => void
@@ -26,6 +27,20 @@ export const usePlayerStore = create<Store>((set, get) => ({
   user: null, config: null, hydrated: false,
   setQueue: (queue, queueMode = 'manual') => set({ queue: queue.filter(canQueue), queueMode }),
   addToQueue: (track) => set((state) => canQueue(track) && !state.queue.some((item) => item.key === track.key) ? { queue: [...state.queue, track] } : state),
+  playNextTrack: (track) => set((state) => {
+    if (!canQueue(track)) return state
+    const queue = state.queue.filter((item) => item.key !== track.key)
+    const currentIndex = queue.findIndex((item) => item.key === state.currentTrack?.key)
+    queue.splice(currentIndex < 0 ? 0 : currentIndex + 1, 0, track)
+    return { queue }
+  }),
+  reorderQueue: (from, to) => set((state) => {
+    if (from === to || from < 0 || to < 0 || from >= state.queue.length || to >= state.queue.length) return state
+    const queue = [...state.queue]
+    const [track] = queue.splice(from, 1)
+    queue.splice(to, 0, track)
+    return { queue, isShuffled: false }
+  }),
   updateQueueTrack: (key, patch) => set((state) => ({
     queue: state.queue.map((track) => track.key === key ? { ...track, ...patch } : track),
     currentTrack: state.currentTrack?.key === key ? { ...state.currentTrack, ...patch } : state.currentTrack,
@@ -37,13 +52,25 @@ export const usePlayerStore = create<Store>((set, get) => ({
     const replacement = queue[index] ?? queue[index - 1] ?? null
     return { queue, currentTrack: replacement, isPlaying: false, currentTime: 0, duration: 0, playbackError: null }
   }),
+  clearQueue: () => set({ queue: [], queueMode: 'manual', currentTrack: null, isPlaying: false, currentTime: 0, duration: 0, playbackError: null, isShuffled: false }),
   setCurrentTrack: (currentTrack) => set({ currentTrack, isPlaying: false, currentTime: 0, duration: 0, playbackError: null }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   togglePlay: () => set((state) => state.currentTrack ? { isPlaying: !state.isPlaying } : state),
   setCurrentTime: (currentTime) => set({ currentTime }), setDuration: (duration) => set({ duration }),
   setVolume: (volume) => set({ volume: Math.max(0, Math.min(1, volume)), isMuted: volume === 0 }),
   toggleMute: () => set((state) => ({ isMuted: !state.isMuted })),
-  toggleShuffle: () => set((state) => ({ isShuffled: !state.isShuffled })),
+  toggleShuffle: () => set((state) => {
+    if (state.isShuffled) return { isShuffled: false }
+    if (state.queue.length < 2) return { isShuffled: true }
+    const currentIndex = state.queue.findIndex((track) => track.key === state.currentTrack?.key)
+    const currentTrack = currentIndex >= 0 ? state.queue[currentIndex] : null
+    const queue = state.queue.filter((_, index) => index !== currentIndex)
+    for (let index = queue.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1))
+      ;[queue[index], queue[swapIndex]] = [queue[swapIndex], queue[index]]
+    }
+    return { isShuffled: true, queue: currentTrack ? [currentTrack, ...queue] : queue }
+  }),
   toggleRepeat: () => set((state) => ({ isRepeating: !state.isRepeating })),
   setIsLoading: (isLoading) => set({ isLoading }), setPlaybackError: (playbackError) => set({ playbackError }),
   setUser: (user) => set({ user }),
@@ -65,11 +92,6 @@ export const usePlayerStore = create<Store>((set, get) => ({
   playNext: () => set((state) => {
     if (!state.currentTrack || state.queue.length === 0) return state
     const index = state.queue.findIndex((item) => item.key === state.currentTrack?.key)
-    if (state.isShuffled && state.queue.length > 1) {
-      let next = Math.floor(Math.random() * state.queue.length)
-      if (next === index) next = (next + 1) % state.queue.length
-      return { currentTrack: state.queue[next], currentTime: 0, duration: 0, isPlaying: false, playbackError: null }
-    }
     if (index < 0 || index >= state.queue.length - 1) return { isPlaying: false }
     return { currentTrack: state.queue[index + 1], currentTime: 0, duration: 0, isPlaying: false, playbackError: null }
   }),

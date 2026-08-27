@@ -8,6 +8,49 @@
     <link rel="apple-touch-icon" href="/brand/app-icon-192.png" />
     <title>Fuze</title>
     <meta name="description" content="A minimal music player" />
+    <style>
+      html, body, #root { min-height: 100%; margin: 0; background: #0a0a0b; }
+      .boot-screen {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 50% 46%, rgba(208, 255, 101, .08), transparent 24rem),
+          #0a0a0b;
+        color: #d0ff65;
+      }
+      .boot-mark {
+        display: grid;
+        gap: 18px;
+        justify-items: center;
+        font: 600 28px/1 system-ui, sans-serif;
+        letter-spacing: .22em;
+        text-indent: .22em;
+      }
+      .boot-pulse {
+        width: 72px;
+        height: 2px;
+        overflow: hidden;
+        background: rgba(208, 255, 101, .14);
+      }
+      .boot-pulse::after {
+        content: '';
+        display: block;
+        width: 45%;
+        height: 100%;
+        background: currentColor;
+        animation: boot-slide 1.1s ease-in-out infinite;
+      }
+      @keyframes boot-slide {
+        from { transform: translateX(-110%); }
+        to { transform: translateX(225%); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-pulse::after { animation: none; width: 100%; opacity: .55; }
+      }
+    </style>
   </head>
-  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+  <body><div id="root"><div class="boot-screen" role="status" aria-label="Fuze is loading"><div class="boot-mark"><span>FUZE</span><span class="boot-pulse" aria-hidden="true"></span></div></div></div><script type="module" src="/src/main.tsx"></script></body>
 </html>
