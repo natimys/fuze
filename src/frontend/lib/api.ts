@@ -1,133 +1,139 @@
-import type {
-  UserPublic,
-  UserRegister,
-  UserLogin,
-  TrackSearchResponse,
-  TrackStreamResponse,
-  TrackDownloadResponse,
-} from './types'
+import type { AdminSettings, AdminSettingsWrite, KeyLogin, KeyRegistration, KeyUserCreate, KeyUserCreated, PlaylistCreate, PlaylistDetail, PlaylistReorder, PlaylistSummary, PlaylistTrack, PlaylistUpdate, ProviderTest, PublicConfig, SystemStatus, TrackAcquireResponse, TrackDownloadBulkResponse, TrackDownloadDescriptor, TrackRead, TrackSearchResponse, TrackSource, TrackStreamResponse, UserCreate, UserLogin, UserPublic, UserRegister, UsersResponse, UserUpdate, YandexDeviceAuthResult, YandexDeviceAuthStart } from './types'
+import type { ImportedTrack, ImportResult, ImportSource } from './types'
+import { getApiBaseUrl } from '@/services/runtimeConfig'
+import { platform } from '@/platform'
 
-const API_BASE = '/api'
-
-let accessToken: string | null = null
-
-let isRefreshing = false
+const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 let refreshPromise: Promise<boolean> | null = null
 
-async function tryRefresh(): Promise<boolean> {
-  if (isRefreshing && refreshPromise) {
-    return refreshPromise
-  }
+async function apiFetch(url: string, options: RequestInit): Promise<Response> {
+  if (!__FUZE_DESKTOP_BUILD__ || !platform.isNative) return fetch(url, options)
+  const { invoke } = await import('@tauri-apps/api/core')
+  const headers = Object.fromEntries(new Headers(options.headers).entries())
+  const result = await invoke<{ status: number; headers: Record<string, string>; body: string }>('api_request', {
+    request: {
+      url,
+      method: options.method ?? 'GET',
+      headers,
+      body: typeof options.body === 'string' ? options.body : null,
+    },
+  })
+  return new Response(result.body, { status: result.status, headers: result.headers })
+}
 
-  isRefreshing = true
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number) { super(message); this.name = 'ApiError' }
+}
+
+function cookie(name: string): string | undefined {
+  if (typeof document === 'undefined') return undefined
+  return document.cookie.split('; ').find((part) => part.startsWith(`${name}=`))?.split('=').slice(1).join('=')
+}
+
+function headersFor(options: RequestInit): Headers {
+  const headers = new Headers(options.headers)
+  if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  if (MUTATING.has((options.method ?? 'GET').toUpperCase())) {
+    const csrf = cookie('csrf_token') ?? cookie('csrf_access_token')
+    if (csrf) headers.set('X-CSRF-TOKEN', decodeURIComponent(csrf))
+  }
+  return headers
+}
+
+async function errorFrom(res: Response): Promise<ApiError> {
+  const body = await res.json().catch(() => ({})) as { detail?: unknown; message?: unknown }
+  const describe = (value: unknown): string | null => {
+    if (typeof value === 'string') return value
+    if (Array.isArray(value)) {
+      const messages = value.map((item) => {
+        if (typeof item === 'string') return item
+        if (item && typeof item === 'object' && 'msg' in item && typeof item.msg === 'string') return item.msg
+        return null
+      }).filter((item): item is string => Boolean(item))
+      return messages.length ? messages.join('. ') : null
+    }
+    if (value && typeof value === 'object' && 'msg' in value && typeof value.msg === 'string') return value.msg
+    return null
+  }
+  return new ApiError(describe(body.detail) ?? describe(body.message) ?? `Request failed: ${res.status}`, res.status)
+}
+
+async function tryRefresh(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise
   refreshPromise = (async () => {
     try {
-      const res = await fetch(`${API_BASE}/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-      if (res.ok) {
-        const data = await res.json()
-        accessToken = data.access_token
-      }
+      const options: RequestInit = { method: 'POST' }
+      const headers = headersFor(options)
+      const refreshCsrf = cookie('csrf_refresh_token')
+      if (refreshCsrf) headers.set('X-CSRF-TOKEN', decodeURIComponent(refreshCsrf))
+      const res = await apiFetch(`${getApiBaseUrl()}/auth/refresh`, { ...options, credentials: 'include', headers })
       return res.ok
-    } catch {
-      return false
-    } finally {
-      isRefreshing = false
-      refreshPromise = null
-    }
+    } catch { return false } finally { refreshPromise = null }
   })()
-
   return refreshPromise
 }
 
-async function request<T>(
-  path: string,
-  options: RequestInit = {},
-  retryCount = 0,
-): Promise<T> {
-  const url = `${API_BASE}${path}`
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string>),
-  }
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`
-  }
-  const res = await fetch(url, {
-    credentials: 'include',
-    headers,
-    ...options,
-  })
-
-  if (res.status === 401) {
-    if (retryCount >= 2) {
-      accessToken = null
-      if (typeof window !== 'undefined') {
-        window.location.href = '/auth'
-      }
-      throw new Error('Unauthorized')
+async function request<T>(path: string, options: RequestInit = {}, protectedRequest = true, retried = false): Promise<T> {
+  let res: Response
+  try {
+    res = await apiFetch(`${getApiBaseUrl()}${path}`, { ...options, credentials: 'include', headers: headersFor(options) })
+  } catch (reason) {
+    if (reason && typeof reason === 'object' && 'name' in reason && reason.name === 'AbortError') throw reason
+    if (platform.isNative) {
+      const detail = typeof reason === 'string' ? reason : reason instanceof Error ? reason.message : String(reason)
+      throw new ApiError(`Connection failed: ${detail}`, 0)
     }
-
-    const refreshed = await tryRefresh()
-    if (refreshed) {
-      return request<T>(path, options, retryCount + 1)
-    }
-
-    accessToken = null
-    if (typeof window !== 'undefined') {
-      window.location.href = '/auth'
-    }
-    throw new Error('Unauthorized')
+    throw new ApiError('Network unavailable. Check your connection and try again.', 0)
   }
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.detail || `Request failed: ${res.status}`)
+  if (res.status === 401 && protectedRequest) {
+    if (!retried && await tryRefresh()) return request<T>(path, options, true, true)
+    if (typeof window !== 'undefined' && window.location.pathname !== '/auth') window.location.replace('/auth')
   }
-
+  if (!res.ok) throw await errorFrom(res)
   if (res.status === 204) return undefined as T
-  return res.json()
+  return res.json() as Promise<T>
 }
 
 export const api = {
+  config: () => request<PublicConfig>('/config', {}, false),
   auth: {
-    register: (data: UserRegister) =>
-      request<UserPublic>('/auth/register', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-
-    login: (data: UserLogin) =>
-      request<{ access_token: string; refresh_token: string }>('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }).then((res) => {
-        accessToken = res.access_token
-        return res
-      }),
-
-    logout: () =>
-      request<void>('/auth/logout', { method: 'POST' }).then(() => {
-        accessToken = null
-      }),
-
+    register: (data: UserRegister) => request<KeyRegistration>('/auth/register', { method: 'POST', body: JSON.stringify(data) }, false),
+    login: (data: UserLogin) => request<UserPublic>('/auth/login', { method: 'POST', body: JSON.stringify(data) }, false),
+    keyLogin: (data: KeyLogin) => request<UserPublic>('/auth/key-login', { method: 'POST', body: JSON.stringify(data) }, false),
+    logout: () => request<void>('/auth/logout', { method: 'POST' }),
     me: () => request<UserPublic>('/auth/me'),
-
-    refresh: () => tryRefresh(),
   },
-
   tracks: {
-    search: (q: string) =>
-      request<TrackSearchResponse>(`/tracks/search?q=${encodeURIComponent(q)}`),
-
-    download: (trackId: number) =>
-      request<TrackDownloadResponse>(`/tracks/${trackId}/download`, {
-        method: 'POST',
-      }),
-
-    stream: (trackId: number) =>
-      request<TrackStreamResponse>(`/tracks/${trackId}/stream`),
+    search: (q: string, signal?: AbortSignal) => request<TrackSearchResponse>(`/tracks/search?q=${encodeURIComponent(q)}`, { signal }),
+    acquire: (source: TrackSource, sourceId: string) => request<TrackAcquireResponse>('/tracks/acquire', { method: 'POST', body: JSON.stringify({ source, source_id: sourceId }) }),
+    get: (trackId: number, signal?: AbortSignal) => request<TrackRead>(`/tracks/${trackId}`, { signal }),
+    stream: (trackId: number, signal?: AbortSignal) => request<TrackStreamResponse>(`/tracks/${trackId}/stream`, { signal }),
+    download: (trackId: number, signal?: AbortSignal) => request<TrackDownloadDescriptor>(`/tracks/${trackId}/download`, { signal }),
+    downloadBulk: (trackIds: number[]) => request<TrackDownloadBulkResponse>('/tracks/downloads/bulk', { method: 'POST', body: JSON.stringify({ track_ids: trackIds }) }),
+  },
+  playlists: {
+    list: (signal?: AbortSignal) => request<PlaylistSummary[]>('/playlists', { signal }),
+    create: (data: PlaylistCreate) => request<PlaylistSummary>('/playlists', { method: 'POST', body: JSON.stringify(data) }),
+    get: (playlistId: number, signal?: AbortSignal) => request<PlaylistDetail>(`/playlists/${playlistId}`, { signal }),
+    update: (playlistId: number, data: PlaylistUpdate) => request<PlaylistDetail>(`/playlists/${playlistId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    remove: (playlistId: number) => request<void>(`/playlists/${playlistId}`, { method: 'DELETE' }),
+    addItem: (playlistId: number, trackId: number) => request<PlaylistTrack>(`/playlists/${playlistId}/items`, { method: 'POST', body: JSON.stringify({ track_id: trackId }) }),
+    removeItem: (playlistId: number, itemId: number) => request<void>(`/playlists/${playlistId}/items/${itemId}`, { method: 'DELETE' }),
+    reorder: (playlistId: number, data: PlaylistReorder) => request<PlaylistDetail>(`/playlists/${playlistId}/items/reorder`, { method: 'PUT', body: JSON.stringify(data) }),
+    startYandexAuth: () => request<YandexDeviceAuthStart>('/playlists/imports/yandex/auth/start', { method: 'POST' }),
+    pollYandexAuth: (deviceCode: string) => request<YandexDeviceAuthResult>('/playlists/imports/yandex/auth/poll', { method: 'POST', body: JSON.stringify({ device_code: deviceCode }) }),
+    yandexSources: (token: string) => request<ImportSource[]>('/playlists/imports/yandex/playlists', { method: 'POST', body: JSON.stringify({ token }) }),
+    importYandex: (token: string, playlistIds: string[]) => request<ImportResult>('/playlists/imports/yandex', { method: 'POST', body: JSON.stringify({ token, playlist_ids: playlistIds }) }),
+    importFile: (title: string, source: TrackSource, tracks: ImportedTrack[]) => request<ImportResult>('/playlists/imports/file', { method: 'POST', body: JSON.stringify({ title, source, tracks }) }),
+  },
+  admin: {
+    settings: () => request<AdminSettings>('/admin/settings'),
+    saveSettings: (data: AdminSettingsWrite) => request<AdminSettings>('/admin/settings', { method: 'PUT', body: JSON.stringify(data) }),
+    system: () => request<SystemStatus>('/admin/system'),
+    testProvider: (provider: 'youtube' | 'yandex' | 'spotify') => request<ProviderTest>(`/admin/providers/${provider}/test`, { method: 'POST' }),
+    users: (page = 1, size = 20, search = '') => request<UsersResponse>(`/users?page=${page}&size=${size}&search=${encodeURIComponent(search)}`),
+    createUser: (data: UserCreate) => request<UserPublic>('/users', { method: 'POST', body: JSON.stringify(data) }),
+    createKeyUser: (data: KeyUserCreate) => request<KeyUserCreated>('/users/key', { method: 'POST', body: JSON.stringify(data) }),
+    updateUser: (id: number, data: UserUpdate) => request<UserPublic>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   },
 }

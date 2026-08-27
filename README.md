@@ -1,238 +1,139 @@
-<div align="center">
-
 # Fuze
 
-**Self-hosted music streaming platform that unifies Spotify, YouTube Music, Yandex Music, and other sources into one place.**
+[Русский](README.ru.md) | English
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.136+-009688.svg)](https://fastapi.tiangolo.com/)
-[![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+Fuze is a self-hosted music player that brings music from YouTube, Yandex Music,
+and Spotify into one library. Spotify is metadata/discovery only: it links back
+to Spotify and does not deliver Spotify audio.
 
-</div>
+It runs as a set of Docker containers and stores its configuration in PostgreSQL.
+Redis handles background jobs, while downloaded media is kept in S3-compatible
+storage.
 
----
+The supported demo client is the web app. The Tauri desktop client remains a
+preview and is not part of the web release gate. The web client supports search,
+acquisition and playback, playlists with custom artwork, and live Yandex playlist
+import through device authorization (when the operator enables that provider).
 
-## About
+## Authentication
 
-Fuze is a self-hosted music streaming service. Search via Yandex Music, pull audio
-from YouTube, store it in MinIO - one interface for all of it.
+An instance can use `password`, `key`, or `both` authentication modes. Public
+registration is a separate operator-controlled flag and is available only when
+key authentication is enabled. Registration returns an access key exactly once:
+copy it before leaving the page. A clipboard failure does not hide the key.
 
-**Key features:**
+## Install
 
-- **Unified search** - find tracks across multiple platforms from one search bar
-- **Smart caching** - Redis-backed caching for search results and YouTube URLs
-- **S3 storage** - MinIO integration for self-hosted audio storage
-- **Modular backend** - auth, users, tracks: each is an independent module you can
-  toggle on or off
-- **Frontend** - Next.js 16 + React 19 + Tailwind CSS with a full player UI
-*for developers*
-- **CLI tooling** - manage Docker, modules, database migrations, and integrations
-  from the terminal
-
-→ **[fuze.cynaqu.ru](https://fuze.cynaqu.ru)** - live demo
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| **Backend** | Python 3.12, FastAPI, SQLAlchemy 2.0, Alembic |
-| **Frontend** | Next.js 16, React 19, TypeScript, Tailwind CSS 4, Zustand |
-| **Database** | PostgreSQL 18 |
-| **Cache** | Redis 7 |
-| **Object Storage** | MinIO (S3-compatible) |
-| **Auth** | JWT via AuthX, Argon2 password hashing |
-| **Integrations** | Yandex Music API, yt-dlp / asyncyt |
-| **Infra** | Docker Compose, uv (Python package manager) |
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- [Docker](https://docs.docker.com/get-docker/) & Docker Compose
-
-#### Development
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) (backend)
-- [Node.js 18+](https://nodejs.org/) (frontend)
-- [Python 3.12+](https://www.python.org/downloads/)
-
-### Installation
+You need a Linux server with Docker Engine and the Docker Compose plugin. Git,
+Python, Node.js, and `uv` are not required on the server.
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/fuze.git
-cd fuze
+curl -fsSL https://github.com/natimys/fuze/releases/latest/download/install.sh | sudo bash
+```
 
-# Install Python dependencies
+The installer offers two modes:
+
+- **Local/LAN** — HTTP on port 3000 by default. Do not expose it directly to the
+  internet.
+- **Public HTTPS** — Caddy configures HTTPS for the application and storage
+  domains. Ports 80 and 443 must be available.
+
+The default installation directory is `/opt/fuze`. Once Fuze is running, instance
+settings are available at `/player/admin-settings`; personal settings are at
+`/player/settings`.
+
+## Update
+
+Fuze does not update itself. To install the latest stable release, run:
+
+```bash
+curl -fsSL https://github.com/natimys/fuze/releases/latest/download/install.sh |
+  sudo bash -s -- --update
+```
+
+Use `--version vX.Y.Z` to install a specific release. Before updating, the
+installer creates a backup. If the new version does not become ready, it restores
+the previous deployment.
+
+## Backup and restore
+
+Fuze keeps seven daily PostgreSQL backups by default. Create one manually with:
+
+```bash
+cd /opt/fuze
+sudo docker compose run --rm backup backup daily
+```
+
+Restore a backup through the installer:
+
+```bash
+curl -fsSL https://github.com/natimys/fuze/releases/latest/download/install.sh |
+  sudo bash -s -- --restore /opt/fuze/backups/fuze-daily-TIMESTAMP.tar.gz
+```
+
+Store copies of both the `.tar.gz` archive and its `.sha256` file outside the
+server. Backups contain credentials and signing keys, so treat them as secrets.
+Downloaded media is not included; Fuze can rebuild it when needed.
+
+For recovery procedures and diagnostics, see the
+[operations runbook](docs/operations/runbooks.md).
+
+## Development
+
+You need Python 3.12, `uv`, Node.js 22, and Docker Compose.
+
+```bash
+cp .env.example .env
+cp .env.test.example .env.test
 uv sync
-
-# Activate venv
-Windows:
-  .venv/Scripts/activate.ps1
-Linux:
-  source .venv/bin/activate
-
-# Create your .env from the example
-project env init
+docker compose up -d --build
 ```
 
-### Configuration
+The web app is served at `http://localhost:3000`. The API listens on
+`http://localhost:8000`.
 
-Edit `.env` and set the required values:
-
-```env.example
-# Database
-DB_HOST=db
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_NAME=database
-
-REDIS_URL=redis://redis:6379/0
-
-# Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-JWT_SECURITY_KEY="CHANGE-THIS-PLEASE"
-
-# Yandex Music (get token via CLI: project env setup yandex)
-YANDEX_ACCESS_TOKEN=
-
-# CORS settings
-# change example.com to your public frontend domain
-CORS_ORIGINS=["https://example.com","http://localhost:3000"]
-CORS_ALLOW_CREDENTIALS=true
-CORS_ALLOW_METHODS=["*"]
-CORS_ALLOW_HEADERS=["*"]
-
-# Tokens configuration
-ACCESS_TOKEN_EXPIRES=15
-REFRESH_TOKEN_EXPIRES=30
-
-# MinIO S3 configuration
-MINIO_ENDPOINT=localhost:9000
-MINIO_EXTERNAL_ENDPOINT=minio:9000
-MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=minioadmin
-MINIO_BUCKET=tracks
-MINIO_SECURE=false
-
-# DEBUG
-DEBUG=true
-```
-
-### Running
-
-**With Docker (recommended):**
+Run the checks:
 
 ```bash
-docker compose up -d
-```
+docker compose --profile test up -d db-test
+uv run pytest
+uv run ruff check .
 
-This starts all services: PostgreSQL, Redis, MinIO, backend, and frontend.
-
-**Local development:**
-
-```bash
-# Start infrastructure services only
-docker compose up -d db redis minio
-
-# Run database migrations
-cd src/backend
-alembic upgrade head
-
-# Start the backend
-uvicorn main:app --host 0.0.0.0 --port 8000
-
-# In another terminal, start the frontend
 cd src/frontend
-npm run dev
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
 ```
 
-### Access
+Tests refuse a database URL whose database name does not contain `test`; never
+point `.env.test` at the production database. Live-provider tests and the demo
+still depend on operator credentials and upstream availability.
 
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:3000 |
-| Backend API | http://localhost:8000 |
-| Swagger Docs | http://localhost:8000/docs |
-| MinIO Console | http://localhost:9001 |
+For frontend development, run `npm run dev` from `src/frontend`. Vite uses port
+3000 and proxies `/api` to `API_PROXY_TARGET` (`http://127.0.0.1:8000` by
+default).
 
----
-
-## CLI
-
-The project ships with a CLI tool for managing infrastructure, modules, and integrations.
+## Useful commands
 
 ```bash
-# Show project info, container status, and active modules
-project info
-
-# Manage Docker services
-project docker up
-project docker down
-project docker logs
-
-# Manage database migrations
-project db migrate
-project db rollback
-
-# Toggle backend modules
-project module toggle tracks
-
-# Manage users
-project users create # use to create admin user
-
-# Initialize .env from .env.example
-project env init
-
-# Set up Yandex Music integration (device auth flow)
-project env setup yandex
+cd /opt/fuze
+sudo docker compose ps
+sudo docker compose logs -f backend worker
+sudo docker compose restart backend
 ```
 
----
+Admin recovery commands are available inside the backend container:
 
-## Project Structure
-
+```bash
+sudo docker compose run --rm backend fuze rescue bootstrap-admin
+sudo docker compose run --rm backend fuze rescue reset-admin-password EMAIL
+sudo docker compose run --rm backend fuze rescue reset-access-key USER_ID --yes
+sudo docker compose run --rm backend fuze rescue promote-user EMAIL
+sudo docker compose exec backend fuze rescue doctor
 ```
-fuze/
-├── src/
-│   ├── backend/
-│   │   ├── core/              # Framework: settings, modules, security, exceptions
-│   │   ├── database/          # SQLAlchemy engine, session, base model
-│   │   ├── integrations/      # External services: Yandex, YouTube, Redis cache, MinIO storage
-│   │   ├── modules/
-│   │   │   ├── auth/          # JWT authentication
-│   │   │   ├── users/         # User management
-│   │   │   └── tracks/        # Track search, download, streaming
-│   │   ├── alembic/           # Database migrations
-│   │   └── main.py            # FastAPI application entry point
-│   ├── cli/                   # Project CLI tool (Typer + Rich)
-│   └── frontend/              # Next.js application
-├── docker-compose.yml
-├── pyproject.toml
-└── uv.lock
-```
-
----
-
-## Modules
-
-The backend uses a modular architecture. Each module lives in `src/backend/modules/` and can be independently enabled or disabled via `module.py`:
-
-| Module | Description |
-|--------|-------------|
-| `auth` | JWT authentication, login, registration, token refresh |
-| `users` | User profiles and role-based access control |
-| `tracks` | Search across Yandex Music, download via YouTube, stream from MinIO |
-
----
-
-## WARNING
-The frontend was completely vibecoded, I'm a backend developer, not a frontend developer.
 
 ## License
 
-MIT
+[MIT](LICENSE)

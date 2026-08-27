@@ -2,7 +2,7 @@
 
 import { usePlayerStore } from '@/lib/store'
 import { useRef, useCallback, useState } from 'react'
-import { audioContext } from './Player'
+import { audioContext } from './audioContext'
 
 function formatTime(seconds: number): string {
   if (!seconds || !isFinite(seconds)) return '0:00'
@@ -21,53 +21,65 @@ export function ProgressBar() {
   const displayTime = isDragging ? dragTime : currentTime
   const progress = duration > 0 ? (displayTime / duration) * 100 : 0
 
-  const getTimeFromEvent = useCallback(
-    (e: MouseEvent | React.MouseEvent<HTMLDivElement>) => {
+  const getTimeFromClientX = useCallback(
+    (clientX: number) => {
       if (!trackRef.current || !duration) return 0
       const rect = trackRef.current.getBoundingClientRect()
-      const x = e.clientX - rect.left
+      const x = clientX - rect.left
       const percent = Math.max(0, Math.min(1, x / rect.width))
       return percent * duration
     },
     [duration]
   )
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
       if (!duration) return
-      const time = getTimeFromEvent(e)
+      event.currentTarget.setPointerCapture(event.pointerId)
+      const time = getTimeFromClientX(event.clientX)
       setIsDragging(true)
       setDragTime(time)
       audioContext.isDragging = true
-
-      const handleMouseMove = (ev: MouseEvent) => {
-        const time = getTimeFromEvent(ev)
-        setDragTime(time)
-      }
-
-      const handleMouseUp = (ev: MouseEvent) => {
-        setIsDragging(false)
-        audioContext.isDragging = false
-        const time = getTimeFromEvent(ev)
-        if (audioContext.current) {
-          audioContext.current.currentTime = time
-        }
-        document.removeEventListener('mousemove', handleMouseMove)
-        document.removeEventListener('mouseup', handleMouseUp)
-      }
-
-      document.addEventListener('mousemove', handleMouseMove)
-      document.addEventListener('mouseup', handleMouseUp)
     },
-    [duration, getTimeFromEvent]
+    [duration, getTimeFromClientX]
   )
+
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging) return
+    setDragTime(getTimeFromClientX(event.clientX))
+  }, [getTimeFromClientX, isDragging])
+
+  const handlePointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging) return
+    const time = getTimeFromClientX(event.clientX)
+    setIsDragging(false)
+    audioContext.isDragging = false
+    if (audioContext.current) audioContext.current.currentTime = time
+    usePlayerStore.getState().setCurrentTime(time)
+    event.currentTarget.releasePointerCapture(event.pointerId)
+  }, [getTimeFromClientX, isDragging])
 
   return (
     <div className="w-full">
       <div
         ref={trackRef}
-        className="relative w-full h-6 cursor-pointer flex items-center group"
-        onMouseDown={handleMouseDown}
+        className="relative w-full h-6 cursor-pointer touch-none flex items-center group"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={() => { setIsDragging(false); audioContext.isDragging = false }}
+        role="slider"
+        tabIndex={duration ? 0 : -1}
+        aria-label="Playback position"
+        aria-valuemin={0}
+        aria-valuemax={Math.floor(duration)}
+        aria-valuenow={Math.floor(displayTime)}
+        onKeyDown={(event) => {
+          if (!audioContext.current || !duration || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return
+          event.preventDefault()
+          const delta = event.key === 'ArrowRight' ? 5 : -5
+          audioContext.current.currentTime = Math.max(0, Math.min(duration, audioContext.current.currentTime + delta))
+        }}
       >
         <div className="w-full h-1 rounded-full bg-hover-strong overflow-hidden">
           <div

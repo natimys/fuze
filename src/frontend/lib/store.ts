@@ -1,129 +1,114 @@
 import { create } from 'zustand'
-import type { TrackSearchResult, UserPublic } from './types'
+import type { PublicConfig, TrackSearchResult, UserPublic } from './types'
 
-interface PlayerState {
-  queue: TrackSearchResult[]
-  currentTrack: TrackSearchResult | null
-  isPlaying: boolean
-  currentTime: number
-  duration: number
-  volume: number
-  isMuted: boolean
-  isShuffled: boolean
-  isRepeating: boolean
-  isLoading: boolean
-  user: UserPublic | null
+interface Store {
+  queue: TrackSearchResult[]; currentTrack: TrackSearchResult | null; isPlaying: boolean
+  queueMode: 'manual' | 'playlist'
+  currentTime: number; duration: number; volume: number; isMuted: boolean
+  isShuffled: boolean; isRepeating: boolean; isLoading: boolean; playbackError: string | null
+  user: UserPublic | null; config: PublicConfig | null; hydrated: boolean
+  setQueue: (v: TrackSearchResult[], mode?: 'manual' | 'playlist') => void; addToQueue: (v: TrackSearchResult) => void
+  playNextTrack: (v: TrackSearchResult) => void; reorderQueue: (from: number, to: number) => void
+  updateQueueTrack: (key: string, patch: Partial<TrackSearchResult>) => void
+  removeFromQueue: (key: string) => void; clearQueue: () => void; setCurrentTrack: (v: TrackSearchResult | null) => void
+  setIsPlaying: (v: boolean) => void; togglePlay: () => void; setCurrentTime: (v: number) => void
+  setDuration: (v: number) => void; setVolume: (v: number) => void; toggleMute: () => void
+  toggleShuffle: () => void; toggleRepeat: () => void; setIsLoading: (v: boolean) => void
+  setPlaybackError: (v: string | null) => void; setUser: (v: UserPublic | null) => void
+  setConfig: (v: PublicConfig) => void
+  hydrate: () => void; playNext: () => void; playPrev: () => void
 }
 
-interface PlayerActions {
-  setQueue: (queue: TrackSearchResult[]) => void
-  addToQueue: (track: TrackSearchResult) => void
-  removeFromQueue: (trackId: number) => void
-  setCurrentTrack: (track: TrackSearchResult | null) => void
-  setIsPlaying: (isPlaying: boolean) => void
-  togglePlay: () => void
-  setCurrentTime: (time: number) => void
-  setDuration: (duration: number) => void
-  setVolume: (volume: number) => void
-  toggleMute: () => void
-  toggleShuffle: () => void
-  toggleRepeat: () => void
-  setIsLoading: (loading: boolean) => void
-  setUser: (user: UserPublic | null) => void
-  playNext: () => void
-  playPrev: () => void
-}
-
-type Store = PlayerState & PlayerActions
+const canQueue = (track: TrackSearchResult) => track.capability === 'acquire' && track.track_id !== null
 
 export const usePlayerStore = create<Store>((set, get) => ({
-  queue: [],
-  currentTrack: null,
-  isPlaying: false,
-  currentTime: 0,
-  duration: 0,
-  volume: 0.7,
-  isMuted: false,
-  isShuffled: false,
-  isRepeating: false,
-  isLoading: false,
-  user: null,
-
-  setQueue: (queue) => set({ queue }),
-
-  addToQueue: (track) => {
-    const { queue } = get()
-    const exists = queue.find((t) => t.id === track.id)
-    if (!exists) {
-      set({ queue: [...queue, track] })
-    }
-  },
-
-  removeFromQueue: (trackId) => {
-    const { queue } = get()
-    set({ queue: queue.filter((t) => t.id !== trackId) })
-  },
-
-  setCurrentTrack: (track) => set({ currentTrack: track, currentTime: 0, duration: 0 }),
-
+  queue: [], currentTrack: null, isPlaying: false, queueMode: 'manual', currentTime: 0, duration: 0, volume: 0.7,
+  isMuted: false, isShuffled: false, isRepeating: false, isLoading: false, playbackError: null,
+  user: null, config: null, hydrated: false,
+  setQueue: (queue, queueMode = 'manual') => set({ queue: queue.filter(canQueue), queueMode }),
+  addToQueue: (track) => set((state) => canQueue(track) && !state.queue.some((item) => item.key === track.key) ? { queue: [...state.queue, track] } : state),
+  playNextTrack: (track) => set((state) => {
+    if (!canQueue(track)) return state
+    const queue = state.queue.filter((item) => item.key !== track.key)
+    const currentIndex = queue.findIndex((item) => item.key === state.currentTrack?.key)
+    queue.splice(currentIndex < 0 ? 0 : currentIndex + 1, 0, track)
+    return { queue }
+  }),
+  reorderQueue: (from, to) => set((state) => {
+    if (from === to || from < 0 || to < 0 || from >= state.queue.length || to >= state.queue.length) return state
+    const queue = [...state.queue]
+    const [track] = queue.splice(from, 1)
+    queue.splice(to, 0, track)
+    return { queue, isShuffled: false }
+  }),
+  updateQueueTrack: (key, patch) => set((state) => ({
+    queue: state.queue.map((track) => track.key === key ? { ...track, ...patch } : track),
+    currentTrack: state.currentTrack?.key === key ? { ...state.currentTrack, ...patch } : state.currentTrack,
+  })),
+  removeFromQueue: (key) => set((state) => {
+    const index = state.queue.findIndex((item) => item.key === key)
+    const queue = state.queue.filter((item) => item.key !== key)
+    if (state.currentTrack?.key !== key) return { queue }
+    const replacement = queue[index] ?? queue[index - 1] ?? null
+    return { queue, currentTrack: replacement, isPlaying: false, currentTime: 0, duration: 0, playbackError: null }
+  }),
+  clearQueue: () => set({ queue: [], queueMode: 'manual', currentTrack: null, isPlaying: false, currentTime: 0, duration: 0, playbackError: null, isShuffled: false }),
+  setCurrentTrack: (currentTrack) => set({ currentTrack, isPlaying: false, currentTime: 0, duration: 0, playbackError: null }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
-
-  togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
-
-  setCurrentTime: (time) => set({ currentTime: time }),
-
-  setDuration: (duration) => set({ duration }),
-
-  setVolume: (volume) => set({ volume, isMuted: volume === 0 }),
-
-  toggleMute: () => {
-    const { isMuted, volume } = get()
-    if (isMuted) {
-      set({ isMuted: false, volume: volume || 0.7 })
-    } else {
-      set({ isMuted: true })
+  togglePlay: () => set((state) => state.currentTrack ? { isPlaying: !state.isPlaying } : state),
+  setCurrentTime: (currentTime) => set({ currentTime }), setDuration: (duration) => set({ duration }),
+  setVolume: (volume) => set({ volume: Math.max(0, Math.min(1, volume)), isMuted: volume === 0 }),
+  toggleMute: () => set((state) => ({ isMuted: !state.isMuted })),
+  toggleShuffle: () => set((state) => {
+    if (state.isShuffled) return { isShuffled: false }
+    if (state.queue.length < 2) return { isShuffled: true }
+    const currentIndex = state.queue.findIndex((track) => track.key === state.currentTrack?.key)
+    const currentTrack = currentIndex >= 0 ? state.queue[currentIndex] : null
+    const queue = state.queue.filter((_, index) => index !== currentIndex)
+    for (let index = queue.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1))
+      ;[queue[index], queue[swapIndex]] = [queue[swapIndex], queue[index]]
     }
-  },
-
-  toggleShuffle: () => set((state) => ({ isShuffled: !state.isShuffled })),
-
+    return { isShuffled: true, queue: currentTrack ? [currentTrack, ...queue] : queue }
+  }),
   toggleRepeat: () => set((state) => ({ isRepeating: !state.isRepeating })),
-
-  setIsLoading: (loading) => set({ isLoading: loading }),
-
+  setIsLoading: (isLoading) => set({ isLoading }), setPlaybackError: (playbackError) => set({ playbackError }),
   setUser: (user) => set({ user }),
-
-  playNext: () => {
-    const { queue, currentTrack, isShuffled } = get()
-    if (!currentTrack || queue.length <= 1) return
-
-    const idx = queue.findIndex((t) => t.id === currentTrack.id)
-    let nextIdx: number
-
-    if (isShuffled) {
-      nextIdx = Math.floor(Math.random() * queue.length)
-      if (nextIdx === idx && queue.length > 1) {
-        nextIdx = (nextIdx + 1) % queue.length
+  setConfig: (config) => set(config.features.playback ? { config } : {
+    config, queue: [], queueMode: 'manual', currentTrack: null, isPlaying: false, playbackError: null,
+  }),
+  hydrate: () => {
+    if (typeof window === 'undefined' || get().hydrated) return
+    try {
+      const raw = localStorage.getItem('fuze-player')
+      if (raw) {
+        const value = JSON.parse(raw) as { queue?: TrackSearchResult[]; volume?: number }
+        set({ queue: Array.isArray(value.queue) ? value.queue.filter(canQueue) : [], volume: typeof value.volume === 'number' ? Math.max(0, Math.min(1, value.volume)) : 0.7, hydrated: true })
+        return
       }
-    } else {
-      nextIdx = (idx + 1) % queue.length
-    }
-
-    set({ currentTrack: queue[nextIdx], currentTime: 0, duration: 0 })
+    } catch { localStorage.removeItem('fuze-player') }
+    set({ hydrated: true })
   },
-
-  playPrev: () => {
-    const { queue, currentTrack, currentTime } = get()
-    if (!currentTrack || queue.length <= 1) return
-
-    if (currentTime > 3) {
-      set({ currentTime: 0 })
-      return
-    }
-
-    const idx = queue.findIndex((t) => t.id === currentTrack.id)
-    const prevIdx = idx <= 0 ? queue.length - 1 : idx - 1
-
-    set({ currentTrack: queue[prevIdx], currentTime: 0, duration: 0 })
-  },
+  playNext: () => set((state) => {
+    if (!state.currentTrack || state.queue.length === 0) return state
+    const index = state.queue.findIndex((item) => item.key === state.currentTrack?.key)
+    if (index < 0 || index >= state.queue.length - 1) return { isPlaying: false }
+    return { currentTrack: state.queue[index + 1], currentTime: 0, duration: 0, isPlaying: false, playbackError: null }
+  }),
+  playPrev: () => set((state) => {
+    if (!state.currentTrack) return state
+    if (state.currentTime > 3) return { currentTime: 0 }
+    const index = state.queue.findIndex((item) => item.key === state.currentTrack?.key)
+    if (index <= 0) return { currentTime: 0 }
+    return { currentTrack: state.queue[index - 1], currentTime: 0, duration: 0, isPlaying: false, playbackError: null }
+  }),
 }))
+
+if (typeof window !== 'undefined') {
+  let persisted = ''
+  usePlayerStore.subscribe((state) => {
+    if (!state.hydrated) return
+    const next = JSON.stringify({ queue: state.queue, volume: state.volume })
+    if (next !== persisted) { persisted = next; localStorage.setItem('fuze-player', next) }
+  })
+}

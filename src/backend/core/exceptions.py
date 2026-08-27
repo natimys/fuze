@@ -11,3 +11,10 @@ class UserAlreadyExists(AppException):
 class InvalidAuthCredentials(AppException):
     status_code = 401
     detail = "Invalid credentials"
+
+
+class CapabilityDisabled(AppException):
+    status_code = 403
+
+    def __init__(self, code: str):
+        self.detail = code

@@ -23,26 +23,31 @@ def iter_module_names():
             yield module_name
 
 
-def load_module_definition(module_name: str) -> ModuleDefinition | None:
+def load_module_definition(module_name: str) -> ModuleDefinition:
     try:
         module_package = importlib.import_module(f"modules.{module_name}.module")
-        module = getattr(module_package, "module", None)
-        if isinstance(module, ModuleDefinition):
-            return module
-    except ModuleNotFoundError as e:
-        logger.error(e)
-        return None
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            f"Module <{module_name}> metadata cannot be imported"
+        ) from exc
+    module = getattr(module_package, "module", None)
+    if not isinstance(module, ModuleDefinition):
+        raise RuntimeError(f"Module <{module_name}> has invalid metadata")
+    return module
 
 
-def load_router(module_name: str) -> APIRouter | None:
+def load_router(module_name: str) -> APIRouter:
     try:
         router_module = importlib.import_module(f"modules.{module_name}.router")
-        return getattr(router_module, "router", None)
-    except ModuleNotFoundError:
-        return None
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(f"Module <{module_name}> router cannot be imported") from exc
+    router = getattr(router_module, "router", None)
+    if not isinstance(router, APIRouter):
+        raise RuntimeError(f"Module <{module_name}> has invalid router")
+    return router
 
 
-def register_modules(app: FastAPI):
+def register_modules(app: FastAPI, *, prefix: str = "") -> None:
     """
     Регистрация модулей из ./modules
     :param app: FastAPI
@@ -51,19 +56,11 @@ def register_modules(app: FastAPI):
     for module_name in iter_module_names():
         module = load_module_definition(module_name)
 
-        if module is None:
-            logger.warning(f"❌ <{module_name}> metadata not found")
-            continue
-
         if not module.active:
             logger.warning(f"⛔ <{module_name}> is inactive")
             continue
 
         router = load_router(module_name)
 
-        if router is None:
-            logger.warning(f"⚠️ <{module_name}> router not found")
-            continue
-
-        app.include_router(router)
+        app.include_router(router, prefix=prefix)
         logger.info(f"✅ Module <{module_name}> router loaded successfully")

@@ -1,0 +1,14 @@
+{
+	auto_https disable_redirects
+}
+
+https://fuze.localhost:8443 {
+	tls internal
+	encode zstd gzip
+	reverse_proxy frontend:3000
+}
+
+https://storage.localhost:8443 {
+	tls internal
+	reverse_proxy minio:9000
+}

@@ -2,38 +2,71 @@
 
 import { usePlayerStore } from '@/lib/store'
 import { api } from '@/lib/api'
-import { useRouter } from 'next/navigation'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
 import {
   House,
   ListMagnifyingGlass,
   Heart,
   Gear,
+  ShieldCheck,
   SignOut,
-  MusicNote,
+  DownloadSimple,
+  Download,
+  MagnifyingGlass,
+  X,
 } from '@phosphor-icons/react'
 import { motion, AnimatePresence } from 'motion/react'
 
 interface SidebarProps {
   isOpen: boolean
   onClose: () => void
+  onSearch?: () => void
 }
 
 const navItems = [
   { icon: House, label: 'Home', href: '/player' },
-  { icon: ListMagnifyingGlass, label: 'Playlists', href: '#' },
-  { icon: Heart, label: 'Favorites', href: '#' },
-  { icon: Gear, label: 'Settings', href: '#' },
+  { icon: ListMagnifyingGlass, label: 'Playlists', href: '/player/playlists' },
+  { icon: DownloadSimple, label: 'Downloads', href: '/player/downloads' },
+  { icon: Download, label: 'Import music', href: '/player/playlists?import=1' },
 ]
 
-export function Sidebar({ isOpen, onClose }: SidebarProps) {
+export function Sidebar({ isOpen, onClose, onSearch }: SidebarProps) {
   const user = usePlayerStore((s) => s.user)
   const setUser = usePlayerStore((s) => s.setUser)
-  const router = useRouter()
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const [logoutError, setLogoutError] = useState<string | null>(null)
+  const panelRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const panel = panelRef.current
+    const selector = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    window.requestAnimationFrame(() => panel?.querySelector<HTMLElement>(selector)?.focus())
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); return }
+      if (event.key !== 'Tab' || !panel) return
+      const controls = [...panel.querySelectorAll<HTMLElement>(selector)]
+      if (!controls.length) { event.preventDefault(); return }
+      const index = controls.indexOf(document.activeElement as HTMLElement)
+      if (event.shiftKey && index <= 0) { event.preventDefault(); controls.at(-1)?.focus() }
+      else if (!event.shiftKey && index === controls.length - 1) { event.preventDefault(); controls[0].focus() }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => { document.removeEventListener('keydown', onKeyDown); previous?.focus() }
+  }, [isOpen, onClose])
 
   async function handleLogout() {
-    await api.auth.logout()
-    setUser(null)
-    router.push('/auth')
+    setLogoutError(null)
+    try {
+      await api.auth.logout()
+      setUser(null)
+      navigate('/auth')
+    } catch (error) {
+      setLogoutError(error instanceof Error ? error.message : 'Sign out failed. Please retry.')
+    }
   }
 
   return (
@@ -54,54 +87,61 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       <AnimatePresence>
         {isOpen && (
           <motion.aside
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
             initial={{ x: -280 }}
             animate={{ x: 0 }}
             exit={{ x: -280 }}
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className="fixed top-0 left-0 bottom-0 z-50 w-[280px] bg-surface border-r border-border flex flex-col"
+            className="fuze-sidebar"
           >
-            <div className="px-6 py-5 border-b border-border">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-surface-raised flex items-center justify-center">
-                  <MusicNote size={16} weight="fill" className="text-text-primary" />
-                </div>
-                <span className="text-sm font-semibold text-text-primary tracking-tight">Fuze</span>
-              </div>
-            </div>
+            <header className="fuze-sidebar__header"><Link to="/player" onClick={onClose}><img src="/brand/fuze-lockup.svg" alt="Fuze" /></Link><button type="button" onClick={onClose} aria-label="Close navigation"><X /></button></header>
 
-            <nav className="flex-1 py-3 px-3">
+            <nav className="fuze-sidebar__nav" aria-label="Application navigation">
+              <span className="fuze-sidebar__eyebrow">Library</span>
               {navItems.map((item) => (
-                <a
+                <Link
                   key={item.label}
-                  href={item.href}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-text-secondary hover:text-text-primary hover:bg-hover transition-colors"
+                  to={item.href}
+                  aria-current={pathname === item.href || (item.href !== '/player' && pathname.startsWith(`${item.href}/`)) ? 'page' : undefined}
+                  onClick={onClose}
+                  className={pathname === item.href || (item.href !== '/player' && pathname.startsWith(`${item.href}/`)) ? 'active' : undefined}
                 >
                   <item.icon size={18} weight="regular" />
                   <span>{item.label}</span>
-                </a>
+                </Link>
               ))}
+              {onSearch && <button type="button" onClick={() => { onClose(); onSearch() }}><MagnifyingGlass size={18} /><span>Search</span><kbd>⌘ K</kbd></button>}
+              <div className="fuze-sidebar__disabled" aria-disabled="true"><Heart size={18} aria-hidden="true" /><span>Favorites</span><small>soon</small></div>
+              <span className="fuze-sidebar__eyebrow">Fuze</span>
+              <Link to="/player/settings" onClick={onClose} aria-current={pathname === '/player/settings' ? 'page' : undefined} className={pathname === '/player/settings' ? 'active' : undefined}><Gear size={18} /><span>Settings</span></Link>
+              {user?.role === 'admin' && <Link to="/player/admin-settings" onClick={onClose} aria-current={pathname.startsWith('/player/admin-settings') ? 'page' : undefined} className={pathname.startsWith('/player/admin-settings') ? 'active' : undefined}><ShieldCheck size={18} /><span>Admin Settings</span></Link>}
             </nav>
 
-            <div className="p-3 border-t border-border">
+            <footer className="fuze-sidebar__footer">
               {user && (
-                <div className="flex items-center gap-3 px-3 py-2">
-                  <div className="w-8 h-8 rounded-full bg-surface-raised flex items-center justify-center text-xs font-semibold text-text-secondary">
+                <div className="fuze-sidebar__user">
+                  <div className="fuze-sidebar__avatar">
                     {user.name[0]?.toUpperCase()}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-text-primary truncate">{user.name}</div>
-                    <div className="text-xs text-text-muted truncate">{user.email}</div>
+                  <div className="fuze-sidebar__identity">
+                    <b>{user.name}</b>
+                    {user.email && <small>{user.email}</small>}
                   </div>
                   <button
                     onClick={handleLogout}
-                    className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-hover transition-colors"
+                    className="fuze-sidebar__logout"
+                    aria-label="Sign out"
                     title="Sign out"
                   >
                     <SignOut size={16} weight="regular" />
                   </button>
                 </div>
               )}
-            </div>
+              {logoutError && <p role="alert" className="fuze-sidebar__error">{logoutError}</p>}
+            </footer>
           </motion.aside>
         )}
       </AnimatePresence>

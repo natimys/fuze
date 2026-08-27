@@ -1,0 +1,15 @@
+[auth]
+# password: вход по email и паролю
+# key: только вход по ключу
+# both: доступны оба способа входа
+mode = "both"
+registration = true
+
+[features]
+playback = true
+
+[providers]
+youtube = true
+yandex = false
+spotify = false
+spotify_market = "US"

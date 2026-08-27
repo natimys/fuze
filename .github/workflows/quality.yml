@@ -1,0 +1,89 @@
+name: quality
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fuze_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d fuze_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: fuze_app
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/fuze_test
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECURITY_KEY: ci-only-secret-key-change-me-at-least-32-bytes
+      CORS_ORIGINS: '["http://localhost:3000"]'
+      CORS_ALLOW_CREDENTIALS: "true"
+      CORS_ALLOW_METHODS: '["*"]'
+      CORS_ALLOW_HEADERS: '["*"]'
+      ACCESS_TOKEN_EXPIRES: 15
+      REFRESH_TOKEN_EXPIRES: 30
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_EXTERNAL_ENDPOINT: localhost:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      DEBUG: "false"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - name: Prepare instance configuration
+        run: cp config/fuze.toml.example config/fuze.toml
+      - run: uv run ruff check .
+      - run: uv run pytest
+      - working-directory: src/backend
+        run: uv run alembic check
+        env:
+          DB_NAME: fuze_test
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - run: npm run build
