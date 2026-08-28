@@ -209,8 +209,8 @@ jobs:
             sleep 5
           done
           printf 'release-test-password\n' | docker compose run --rm backend fuze rescue bootstrap-admin --email admin@example.com --name 'Release Admin' --password-stdin
-          curl --fail --retry 30 --retry-all-errors --retry-delay 2 http://127.0.0.1:3000/ >/dev/null
-          curl --fail http://127.0.0.1:3000/api/v1/config | grep -q '"setup_required":false'
+          docker compose exec -T frontend wget -q -O /dev/null http://127.0.0.1:3000/
+          docker compose exec -T frontend wget -q -O - http://127.0.0.1:3000/api/v1/config | grep -q '"setup_required":false'
           archive="$(docker compose run --rm backup backup daily | tail -1)"
           test -f ".${archive}"
           docker compose stop frontend backend worker beat backup
@@ -224,6 +224,7 @@ jobs:
         working-directory: release-bundle
         run: |
           docker compose ps -a || true
+          docker compose port frontend 3000 || true
           docker compose logs --no-color --timestamps || true
       - name: Clean up rehearsal
         if: always()
