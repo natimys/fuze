@@ -176,6 +176,8 @@ jobs:
         run: |
           mkdir -p release-bundle/secrets release-bundle/backups
           for name in postgres_password jwt_key config_encryption_key minio_root_access_key minio_root_secret_key minio_media_access_key minio_media_secret_key; do printf test-secret-value-at-least-32-characters > "release-bundle/secrets/$name"; done
+          printf fuze-root-test > release-bundle/secrets/minio_root_access_key
+          printf fuze-media-test > release-bundle/secrets/minio_media_access_key
           cat release-bundle/.env.release > release-bundle/.env
           cat >> release-bundle/.env <<'EOF'
           DB_NAME=fuze
@@ -217,6 +219,16 @@ jobs:
           docker compose up -d --pull never
           docker compose exec -T backend fuze rescue db-status --json | grep -q '"drift": false'
           docker compose down -v
+      - name: Show rehearsal diagnostics
+        if: failure()
+        working-directory: release-bundle
+        run: |
+          docker compose ps -a || true
+          docker compose logs --no-color --timestamps || true
+      - name: Clean up rehearsal
+        if: always()
+        working-directory: release-bundle
+        run: docker compose down -v --remove-orphans || true
       - uses: sigstore/cosign-installer@v3
       - name: Export OCI SBOM and provenance attestations
         run: |
