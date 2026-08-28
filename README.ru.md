@@ -133,6 +133,7 @@ sudo docker compose run --rm backend fuze rescue bootstrap-admin
 sudo docker compose run --rm backend fuze rescue reset-admin-password EMAIL
 sudo docker compose run --rm backend fuze rescue reset-access-key USER_ID --yes
 sudo docker compose run --rm backend fuze rescue promote-user EMAIL
+sudo docker compose run --rm backend fuze rescue provider-key yandex
 sudo docker compose exec backend fuze rescue doctor
 ```
 

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import hashlib
 import secrets
@@ -69,6 +70,42 @@ def _hash_password(value: str) -> str:
 def _new_access_key() -> tuple[str, str]:
     secret = f"fuze_{secrets.token_urlsafe(32)}"
     return secret, hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+
+@app.command("provider-key")
+def provider_key(
+    provider: str = typer.Argument(..., help="Provider to authorize (currently: yandex)"),
+):
+    """Authorize a provider and print a key for manual entry in admin settings."""
+    if provider.lower() != "yandex":
+        typer.echo(f"Error: unsupported provider: {provider}", err=True)
+        raise typer.Exit(2)
+
+    from yandex_music import ClientAsync
+
+    typer.echo("Yandex Music device authorization")
+    typer.echo("This command only generates a key; it does not save or apply it.")
+
+    def show_code(code) -> None:
+        typer.echo(f"Open: {code.verification_url}")
+        typer.echo(f"Enter code: {code.user_code}")
+        typer.echo("Waiting for authorization...")
+
+    try:
+        result = asyncio.run(ClientAsync().device_auth(on_code=show_code))
+    except Exception as exc:
+        typer.echo(f"Error: Yandex authorization failed ({type(exc).__name__})", err=True)
+        raise typer.Exit(4) from exc
+
+    key = getattr(result, "access_token", result)
+    if not isinstance(key, str) or not key:
+        typer.echo("Error: Yandex authorization returned no provider key", err=True)
+        raise typer.Exit(4)
+
+    typer.echo("Authorization successful.")
+    typer.echo("Copy this key and paste it into Admin settings -> yandex token:")
+    typer.echo(key)
+    typer.echo("The key was not saved or applied automatically.")
 
 
 @app.command("bootstrap-admin")
