@@ -230,20 +230,33 @@ jobs:
         if: always()
         working-directory: release-bundle
         run: docker compose down -v --remove-orphans || true
-      - uses: sigstore/cosign-installer@v3
       - name: Export OCI SBOM and provenance attestations
         run: |
-          cosign download sbom "${BACKEND_IMAGE}@${BACKEND_DIGEST}" > backend-sbom.spdx.json
-          cosign download sbom "${FRONTEND_IMAGE}@${FRONTEND_DIGEST}" > frontend-sbom.spdx.json
-          cosign download attestation "${BACKEND_IMAGE}@${BACKEND_DIGEST}" > backend-provenance.jsonl
-          cosign download attestation "${FRONTEND_IMAGE}@${FRONTEND_DIGEST}" > frontend-provenance.jsonl
+          for platform in linux/amd64 linux/arm64; do
+            suffix="${platform//\//-}"
+            docker buildx imagetools inspect "${BACKEND_IMAGE}@${BACKEND_DIGEST}" \
+              --format "{{ json (index .SBOM \"${platform}\").SPDX }}" > "backend-sbom-${suffix}.spdx.json"
+            docker buildx imagetools inspect "${FRONTEND_IMAGE}@${FRONTEND_DIGEST}" \
+              --format "{{ json (index .SBOM \"${platform}\").SPDX }}" > "frontend-sbom-${suffix}.spdx.json"
+            docker buildx imagetools inspect "${BACKEND_IMAGE}@${BACKEND_DIGEST}" \
+              --format "{{ json (index .Provenance \"${platform}\").SLSA }}" > "backend-provenance-${suffix}.slsa.json"
+            docker buildx imagetools inspect "${FRONTEND_IMAGE}@${FRONTEND_DIGEST}" \
+              --format "{{ json (index .Provenance \"${platform}\").SLSA }}" > "frontend-provenance-${suffix}.slsa.json"
+          done
+          for artifact in *-sbom-linux-*.spdx.json *-provenance-linux-*.slsa.json; do
+            jq -e 'type == "object" and length > 0' "$artifact" >/dev/null
+          done
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             install.sh
             fuze-deploy.tar.gz
             SHA256SUMS
-            backend-sbom.spdx.json
-            frontend-sbom.spdx.json
-            backend-provenance.jsonl
-            frontend-provenance.jsonl
+            backend-sbom-linux-amd64.spdx.json
+            backend-sbom-linux-arm64.spdx.json
+            frontend-sbom-linux-amd64.spdx.json
+            frontend-sbom-linux-arm64.spdx.json
+            backend-provenance-linux-amd64.slsa.json
+            backend-provenance-linux-arm64.slsa.json
+            frontend-provenance-linux-amd64.slsa.json
+            frontend-provenance-linux-arm64.slsa.json
