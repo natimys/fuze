@@ -217,7 +217,7 @@ jobs:
           docker compose exec -T postgres psql -U fuze -d fuze -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
           docker compose run --rm backup restore "$archive"
           docker compose up -d --pull never
-          docker compose exec -T backend fuze rescue db-status --json | grep -q '"drift": false'
+          docker compose run --rm backend fuze rescue db-status --json | grep -q '"drift": false'
           docker compose down -v
       - name: Show rehearsal diagnostics
         if: failure()
