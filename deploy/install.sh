@@ -12,6 +12,7 @@ STORAGE_DOMAIN=""
 ACME_EMAIL=""
 NON_INTERACTIVE=0
 UPDATE=0
+UNINSTALL=0
 RESTORE_ARCHIVE=""
 BACKUP_RETENTION_DAILY="7"
 BACKUP_RETENTION_PREUPDATE="3"
@@ -36,8 +37,9 @@ while [ "$#" -gt 0 ]; do
     --pre-update-retention) BACKUP_RETENTION_PREUPDATE="$2"; shift 2;;
     --non-interactive) NON_INTERACTIVE=1; shift;;
     --update) UPDATE=1; shift;;
+    --uninstall) UNINSTALL=1; shift;;
     --restore) RESTORE_ARCHIVE="$2"; shift 2;;
-    --help) printf '%s\n' 'Usage: install.sh [--update] [--restore ARCHIVE] [--version vX.Y.Z] [--mode local|https] [--install-dir PATH]'; exit 0;;
+    --help) printf '%s\n' 'Usage: install.sh [--update | --uninstall | --restore ARCHIVE] [--version vX.Y.Z] [--mode local|https] [--install-dir PATH] [--non-interactive]'; exit 0;;
     *) fail "unknown option: $1";;
   esac
 done
@@ -47,6 +49,25 @@ done
 command_exists docker || fail "Docker Engine is required. Install it from https://docs.docker.com/engine/install/ and retry."
 docker info >/dev/null 2>&1 || fail "Docker daemon is unavailable. Start Docker and retry."
 docker compose version >/dev/null 2>&1 || fail "Docker Compose plugin is required. Install docker-compose-plugin and retry."
+
+if [ "$UNINSTALL" -eq 1 ]; then
+  [ "$UPDATE" -eq 0 ] && [ -z "$RESTORE_ARCHIVE" ] || fail "--uninstall cannot be combined with --update or --restore"
+  [ "$INSTALL_DIR" != / ] && [ -n "$INSTALL_DIR" ] || fail "refusing to uninstall from an unsafe installation directory"
+  [ -f "$INSTALL_DIR/compose.yaml" ] && [ -f "$INSTALL_DIR/VERSION" ] || fail "no Fuze installation found at $INSTALL_DIR"
+  printf '%s\n' 'WARNING: This permanently deletes Fuze containers, database, media, Docker volumes, secrets, and local backups.'
+  confirm "Completely uninstall Fuze from $INSTALL_DIR?" || fail "uninstall cancelled"
+  cd "$INSTALL_DIR"
+  uninstall_mode="$(awk -F= '/^DEPLOYMENT_MODE=/{print $2}' .env 2>/dev/null || echo local)"
+  uninstall_files="-f compose.yaml"
+  [ "$uninstall_mode" = https ] && uninstall_files="$uninstall_files -f compose.https.yaml"
+  info "Removing Fuze containers, networks, and volumes"
+  docker compose $uninstall_files down --volumes --remove-orphans || fail "failed to remove Fuze Docker resources"
+  cd /
+  rm -rf -- "$INSTALL_DIR"
+  info "Fuze was completely removed"
+  exit 0
+fi
+
 command_exists curl || fail "curl is required."
 command_exists sha256sum || fail "sha256sum is required."
 command_exists tar || fail "tar is required."

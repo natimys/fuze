@@ -49,6 +49,20 @@ docker compose -f compose.yaml -f compose.https.yaml up -d
 
 Copy each archive together with its `.sha256` file to encrypted off-host storage. Periodically restore one into a clean isolated host. Backups contain database data and every key required to decrypt credentials; restrict access and retention accordingly.
 
+## Uninstall
+
+The installer can remove the entire deployment, including containers, networks,
+PostgreSQL and MinIO volumes, secrets, and local backups. Copy anything that
+must be retained off the server first.
+
+```bash
+curl -fsSL https://github.com/natimys/fuze/releases/latest/download/install.sh |
+  sudo bash -s -- --uninstall
+```
+
+For unattended automation, add `--non-interactive`. Use `--install-dir PATH`
+when Fuze was installed outside `/opt/fuze`.
+
 ## Provider diagnostics
 
 Confirm the provider is enabled and credentials show `configured` in `/player/admin-settings`, then use **Test connection**. The response deliberately omits upstream bodies and tokens. `fuze rescue config-show` can confirm presence and decryptability without revealing values. Provider disablement blocks new search/acquire operations within five seconds.
