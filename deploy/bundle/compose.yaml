@@ -168,7 +168,8 @@ services:
     networks: [data]
     depends_on:
       postgres: {condition: service_healthy}
-    command: [/bin/bash, /deploy/backup.sh, schedule]
+    entrypoint: [/bin/bash, /deploy/backup.sh]
+    command: [schedule]
     restart: unless-stopped
 
 networks:
