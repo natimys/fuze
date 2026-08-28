@@ -72,7 +72,11 @@ if [ -n "$RESTORE_ARCHIVE" ]; then
   temp_restore="$(mktemp -d)"
   tar -C "$temp_restore" -xzf "$RESTORE_ARCHIVE"
   cp -a "$temp_restore/secrets/." "$INSTALL_DIR/secrets/"
-  chmod 600 "$INSTALL_DIR"/secrets/*
+  # Compose bind-mounts file-backed secrets without applying uid/gid/mode.
+  # The backend image runs as the unprivileged `fuze` user, so the mounted
+  # files must be readable inside the container. The parent directory remains
+  # root-only on the host.
+  chmod 644 "$INSTALL_DIR"/secrets/*
   cp "$temp_restore/.env" "$INSTALL_DIR/.env"
   restored_db_password="$(cat "$INSTALL_DIR/secrets/postgres_password")"
   printf "ALTER USER fuze PASSWORD '%s';\n" "$restored_db_password" | docker compose $restore_files exec -T postgres psql -U fuze -d fuze >/dev/null
@@ -157,6 +161,12 @@ if [ "$UPDATE" -ne 1 ]; then
     [ -s "$INSTALL_DIR/secrets/$secret" ] || { umask 177; dd if=/dev/urandom bs=48 count=1 2>/dev/null | base64 | tr -d '\n' >"$INSTALL_DIR/secrets/$secret"; }
   done
 fi
+
+# Docker Compose implements local file-backed secrets as bind mounts and
+# preserves the source file mode. Keep the directory private on the host while
+# allowing non-root service users to read the individual mounted secret files.
+chmod 700 "$INSTALL_DIR/secrets"
+chmod 644 "$INSTALL_DIR"/secrets/*
 
 cp "$tmp/bundle/compose.yaml" "$tmp/bundle/compose.https.yaml" "$tmp/bundle/Caddyfile" "$tmp/bundle/VERSION" "$INSTALL_DIR/"
 cp -a "$tmp/bundle/deploy/." "$INSTALL_DIR/deploy/"
