@@ -172,7 +172,7 @@ jobs:
           cp deploy/install.sh install.sh
           chmod +x install.sh
           sha256sum install.sh fuze-deploy.tar.gz > SHA256SUMS
-      - name: Validate Local and Public HTTPS Compose
+      - name: Validate Local, Public HTTPS, and External HTTPS Compose
         run: |
           mkdir -p release-bundle/secrets release-bundle/backups
           for name in postgres_password jwt_key config_encryption_key minio_root_access_key minio_root_secret_key minio_media_access_key minio_media_secret_key; do printf test-secret-value-at-least-32-characters > "release-bundle/secrets/$name"; done
@@ -185,6 +185,10 @@ jobs:
           APP_DOMAIN=fuze.example.com
           STORAGE_DOMAIN=media.example.com
           ACME_EMAIL=admin@example.com
+          DEPLOYMENT_MODE=external-https
+          BIND_ADDRESS=127.0.0.1
+          APP_PORT=3000
+          MEDIA_PORT=9000
           CORS_ORIGINS=["https://fuze.example.com"]
           CORS_ALLOW_CREDENTIALS=true
           CORS_ALLOW_METHODS=["*"]
@@ -194,6 +198,10 @@ jobs:
           EOF
           unset BACKEND_IMAGE FRONTEND_IMAGE
           (cd release-bundle && docker compose config >/dev/null)
+          (cd release-bundle && test "$(docker compose config --services | grep -c '^caddy$')" -eq 0)
+          (cd release-bundle && docker compose config --format json | jq -e '.services.frontend.ports == [{"mode":"ingress","target":3000,"published":"3000","host_ip":"127.0.0.1","protocol":"tcp"}]')
+          (cd release-bundle && docker compose config --format json | jq -e '.services.minio.ports == [{"mode":"ingress","target":9000,"published":"9000","host_ip":"127.0.0.1","protocol":"tcp"}]')
+          (cd release-bundle && docker compose config --format json | jq -e '(.services.postgres.ports // []) == [] and (.services.redis.ports // []) == [] and (.services.backend.ports // []) == []')
           (cd release-bundle && docker compose -f compose.yaml -f compose.https.yaml config >/dev/null)
       - name: Fresh install and backup/restore rehearsal
         run: |

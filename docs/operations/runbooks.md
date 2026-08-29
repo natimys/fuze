@@ -45,6 +45,52 @@ docker compose -f compose.yaml -f compose.https.yaml config
 docker compose -f compose.yaml -f compose.https.yaml up -d
 ```
 
+## External HTTPS reverse proxy
+
+Use installer mode `external-https` when TLS is terminated by an independently
+managed reverse proxy. The proxy container must use `network_mode: host`; a
+container on an ordinary bridge network cannot reach host loopback. Fuze keeps
+production settings, secure cookies, and public HTTPS URLs, but starts only
+`compose.yaml`. Its default upstreams are `127.0.0.1:3000` and
+`127.0.0.1:9000`.
+
+Example external Caddy configuration:
+
+```caddyfile
+fuze.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000
+}
+
+storage.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:9000
+}
+```
+
+For a new installation, pass `--mode external-https`, both domains, and
+optionally `--bind-address IPv4`. To migrate from built-in HTTPS, first run the
+installer update with `--mode external-https`; only after it succeeds should you
+start or reload external Caddy. To move back to built-in `https`, stop the
+external proxy first so ports 80 and 443 are free.
+
+`0.0.0.0` is accepted as an explicit bind address, but Docker-published ports
+must not be considered protected solely by UFW rules. Keep the safe
+`127.0.0.1` default unless remote access to the upstream ports is intentional
+and protected separately.
+
+Verify the deployment and both local upstreams before testing public DNS/TLS:
+
+```bash
+cd /opt/fuze
+docker compose ps
+ss -ltn | grep -E '127\.0\.0\.1:(3000|9000)'
+curl --fail http://127.0.0.1:3000/
+curl --fail http://127.0.0.1:9000/minio/health/live
+curl --fail https://fuze.example.com/
+curl --fail https://storage.example.com/minio/health/live
+```
+
 ## Off-host backups
 
 Copy each archive together with its `.sha256` file to encrypted off-host storage. Periodically restore one into a clean isolated host. Backups contain database data and every key required to decrypt credentials; restrict access and retention accordingly.

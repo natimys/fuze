@@ -31,12 +31,27 @@ Node.js и `uv` на сервере не требуются.
 curl -fsSL https://github.com/natimys/fuze/releases/latest/download/install.sh | sudo bash
 ```
 
-Установщик предложит два режима:
+Установщик предложит три режима:
 
 - **Локальная сеть** — HTTP на порту 3000 по умолчанию. Не выставляйте этот
   режим напрямую в интернет.
 - **Публичный HTTPS** — Caddy настроит HTTPS для доменов приложения и хранилища.
   Порты 80 и 443 должны быть свободны.
+- **Внешний HTTPS** — production-настройки и публичные HTTPS-адреса при
+  завершении TLS во внешнем reverse proxy. Fuze по умолчанию публикует frontend
+  и MinIO только на `127.0.0.1` и не запускает встроенный Caddy.
+
+Пример установки за внешним proxy:
+
+```bash
+curl -fsSL https://github.com/natimys/fuze/releases/latest/download/install.sh |
+  sudo bash -s -- --mode external-https --app-domain fuze.example.com \
+  --storage-domain storage.example.com --non-interactive
+```
+
+Proxy должен использовать host network, чтобы обращаться к loopback upstream.
+Конфигурация Caddy, порядок миграции и команды проверки приведены в
+[инструкции по эксплуатации](docs/operations/runbooks.md#external-https-reverse-proxy).
 
 По умолчанию Fuze устанавливается в `/opt/fuze`. После запуска настройки сервера
 доступны по адресу `/player/admin-settings`, а личные настройки пользователя —
