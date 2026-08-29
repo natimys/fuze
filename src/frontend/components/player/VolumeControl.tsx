@@ -3,7 +3,7 @@
 import { usePlayerStore } from '@/lib/store'
 import { SpeakerSimpleHigh, SpeakerSimpleSlash } from '@phosphor-icons/react'
 import { useRef, useCallback } from 'react'
-import { audioContext } from './Player'
+import { audioContext } from './audioContext'
 
 export function VolumeControl() {
   const volume = usePlayerStore((s) => s.volume)
@@ -73,6 +73,18 @@ export function VolumeControl() {
         ref={trackRef}
         className="relative w-20 h-5 cursor-pointer flex items-center group"
         onMouseDown={handleMouseDown}
+        role="slider"
+        tabIndex={0}
+        aria-label="Volume"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(displayVolume * 100)}
+        onKeyDown={(event) => {
+          if (!['ArrowLeft', 'ArrowDown', 'ArrowRight', 'ArrowUp'].includes(event.key)) return
+          event.preventDefault()
+          const delta = ['ArrowRight', 'ArrowUp'].includes(event.key) ? 0.05 : -0.05
+          setVolume(displayVolume + delta)
+        }}
       >
         <div className="w-full h-1 rounded-full bg-hover-strong overflow-hidden">
           <div

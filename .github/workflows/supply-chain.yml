@@ -1,0 +1,88 @@
+name: supply-chain
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: supply-chain-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BACKEND_IMAGE: fuze-backend:supply-chain
+  FRONTEND_IMAGE: fuze-frontend:supply-chain
+  GRYPE_VERSION: v0.116.1
+  SYFT_VERSION: v1.50.0
+  GITLEAKS_VERSION: v8.30.0
+
+jobs:
+  image-gate:
+    name: image-gate (${{ matrix.component }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: backend
+            image: fuze-backend:supply-chain
+            context: .
+            dockerfile: src/backend/Dockerfile
+          - component: frontend
+            image: fuze-frontend:supply-chain
+            context: src/frontend
+            dockerfile: src/frontend/Dockerfile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-buildx-action@v3
+      - name: Build release image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          load: true
+          tags: ${{ matrix.image }}
+          cache-from: type=gha,scope=supply-chain-${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=supply-chain-${{ matrix.component }}
+
+      - name: Verify pinned media binaries
+        if: matrix.component == 'backend'
+        run: |
+          docker run --rm --entrypoint /bin/sh "${{ matrix.image }}" -c \
+            '/app/src/backend/bin/yt-dlp --version && /app/src/backend/bin/ffmpeg -version && /app/src/backend/bin/node --version'
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          mkdir -p artifacts
+          docker save --output "artifacts/${{ matrix.component }}.tar" "${{ matrix.image }}"
+          docker run --rm -v "$PWD/artifacts:/scan:ro" \
+            "anchore/syft:$SYFT_VERSION" "docker-archive:/scan/${{ matrix.component }}.tar" \
+            -o cyclonedx-json > "artifacts/${{ matrix.component }}.cdx.json"
+
+      - name: Scan image
+        run: |
+          docker run --rm -v "$PWD/artifacts:/scan:ro" \
+            "anchore/grype:$GRYPE_VERSION" "docker-archive:/scan/${{ matrix.component }}.tar" \
+            --only-fixed --fail-on critical
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyclonedx-sbom-${{ matrix.component }}
+          path: artifacts/${{ matrix.component }}.cdx.json
+          if-no-files-found: error
+
+  operations-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Scan Git history for secrets
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" "ghcr.io/gitleaks/gitleaks:$GITLEAKS_VERSION" \
+            git --redact --verbose /repo
+
+      - name: Verify PostgreSQL backup and restore
+        run: python deploy/operations/verify_backup_restore.py

@@ -15,7 +15,8 @@ console = Console()
 @app.command()
 def init(
     env: bool = typer.Option(True, help="Create .env from .env.example if missing"),
-    docker_compose: bool = typer.Option(True, help="Create docker-compose.yml from docker-compose.yml.example if missing")
+    docker_compose: bool = typer.Option(True, help="Create docker-compose.yml from docker-compose.yml.example if missing"),
+    config: bool = typer.Option(True, help="Create config/fuze.toml with compatible defaults if missing"),
 ):
     if env:
         env_file = ROOT / ".env"
@@ -33,6 +34,15 @@ def init(
             console.print("[green]docker-compose.yml created from docker-compose.yml.example[/green]")
         else:
             console.print("[yellow]docker-compose.yml already exists or docker-compose.yml.example missing[/yellow]")
+    if config:
+        config_file = ROOT / "config" / "fuze.toml"
+        config_example = ROOT / "config" / "fuze.toml.example"
+        if not config_file.exists():
+            config_file.parent.mkdir(parents=True, exist_ok=True)
+            config_file.write_text(config_example.read_text(encoding="utf-8"), encoding="utf-8")
+            console.print("[green]config/fuze.toml created[/green]")
+        else:
+            console.print("[yellow]config/fuze.toml already exists[/yellow]")
 
 @setup_app.command()
 def yandex():

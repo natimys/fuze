@@ -1,0 +1,14 @@
+{
+  email {$ACME_EMAIL}
+  admin 0.0.0.0:2019
+}
+
+{$APP_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy frontend:3000
+}
+
+{$STORAGE_DOMAIN} {
+  encode zstd gzip
+  reverse_proxy minio:9000
+}

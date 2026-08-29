@@ -1,0 +1,69 @@
+'use client'
+import { useMemo, useRef, useState } from 'react'
+import { ArrowLeft, ArrowSquareOut, Check, FileCsv, SignIn, Spinner, SpotifyLogo } from '@phosphor-icons/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { api } from '@/lib/api'
+import type { ImportResult, ImportSource, TrackSource } from '@/lib/types'
+import { groupImportedPlaylists, parseCsv, type ImportedPlaylistPreview } from '@/lib/playlistImport'
+import { FuzeButton, FuzeCheckbox, FuzeField, FuzeInput } from '@/components/fuze'
+
+type Provider = 'yandex' | 'spotify' | 'csv'
+type Stage = 'source' | 'connect' | 'preview' | 'importing' | 'result'
+const TOKEN_KEY = 'fuze-yandex-access-key'
+function YandexMark() { return <span className="fuze-yandex-mark" aria-hidden="true">Я</span> }
+
+export function PlaylistImport({ onDone }: { onDone: () => void }) {
+  const reduceMotion = useReducedMotion(), inputRef = useRef<HTMLInputElement>(null)
+  const authAttempt = useRef(0)
+  const [provider, setProvider] = useState<Provider | null>(null), [stage, setStage] = useState<Stage>('source')
+  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) ?? ''), [saveToken, setSaveToken] = useState(() => Boolean(localStorage.getItem(TOKEN_KEY)))
+  const [sources, setSources] = useState<ImportSource[]>([]), [filePlaylists, setFilePlaylists] = useState<ImportedPlaylistPreview[]>([]), [selected, setSelected] = useState<string[]>([])
+  const [busy, setBusy] = useState(false), [message, setMessage] = useState<string | null>(null), [progress, setProgress] = useState(0)
+  const [yandexConfirmation, setYandexConfirmation] = useState<{ url: string; code: string } | null>(null)
+  const [result, setResult] = useState({ playlists: 0, tracks: 0, failed: 0 })
+  const preview = useMemo(() => provider === 'yandex' ? sources.map(s => ({ id:s.id,title:s.title,count:s.tracks_count })) : filePlaylists.map(p => ({ id:p.id,title:p.title,count:p.tracks.length })), [filePlaylists, provider, sources])
+
+  function choose(next: Provider) { setProvider(next); setMessage(null); window.setTimeout(() => { setStage('connect'); if (next === 'csv') window.setTimeout(() => inputRef.current?.click(), 50) }, reduceMotion ? 0 : 180) }
+  function reset() { authAttempt.current += 1; setBusy(false); setProvider(null); setStage('source'); setSources([]); setFilePlaylists([]); setSelected([]); setMessage(null); setYandexConfirmation(null) }
+  async function connect() { setBusy(true); setMessage(null); try { const values=await api.playlists.yandexSources(token); if(saveToken)localStorage.setItem(TOKEN_KEY,token);else localStorage.removeItem(TOKEN_KEY);setSources(values);setSelected(values.map(v=>v.id));setStage('preview') } catch(e){setMessage(e instanceof Error?e.message:'Не удалось подключиться')} finally{setBusy(false)} }
+  async function signInWithYandex() {
+    const attempt = ++authAttempt.current
+    const popup = window.open('about:blank', 'fuze-yandex-auth')
+    if (popup) popup.opener = null
+    setBusy(true); setMessage(null); setYandexConfirmation(null)
+    try {
+      const auth = await api.playlists.startYandexAuth()
+      setYandexConfirmation({ url: auth.verification_url, code: auth.user_code })
+      if (popup) popup.location.replace(auth.verification_url)
+      setMessage(`Введите код ${auth.user_code} на странице Яндекса. Ожидаем подтверждение…`)
+      const deadline = Date.now() + auth.expires_in * 1000
+      while (attempt === authAttempt.current && Date.now() < deadline) {
+        await new Promise(resolve => window.setTimeout(resolve, Math.max(1000, auth.interval * 1000)))
+        if (attempt !== authAttempt.current) return
+        const result = await api.playlists.pollYandexAuth(auth.device_code)
+        if (result.status === 'authorized' && result.token) {
+          setToken(result.token)
+          if (saveToken) localStorage.setItem(TOKEN_KEY, result.token)
+          const values = await api.playlists.yandexSources(result.token)
+          setSources(values); setSelected(values.map(value => value.id)); setStage('preview'); setMessage(null); setYandexConfirmation(null)
+          return
+        }
+      }
+      if (attempt === authAttempt.current) setMessage('Время ожидания истекло. Нажмите «Войти через Яндекс» ещё раз.')
+    } catch (error) {
+      if (attempt === authAttempt.current) setMessage(error instanceof Error ? error.message : 'Не удалось войти через Яндекс')
+    } finally {
+      if (attempt === authAttempt.current) setBusy(false)
+    }
+  }
+  async function readFile(file: File) { setBusy(true);setMessage(null);try{const text=await file.text();let rows:Record<string,unknown>[];if(file.name.toLowerCase().endsWith('.json')){const parsed=JSON.parse(text) as unknown;rows=Array.isArray(parsed)?parsed as Record<string,unknown>[]:(parsed as {tracks?:Record<string,unknown>[]}).tracks??[]}else rows=parseCsv(text);const groups=groupImportedPlaylists(rows,file.name);if(!groups.length)throw new Error('Треки не найдены. Нужны колонки title/track и artist либо CSV из Exportify.');setFilePlaylists(groups);setSelected(groups.map(g=>g.id));setStage('preview')}catch(e){setMessage(e instanceof Error?e.message:'Не удалось прочитать файл')}finally{setBusy(false)} }
+  async function runImport(){setStage('importing');setProgress(0);setMessage(null);try{if(provider==='yandex'){const value=await api.playlists.importYandex(token,selected);setResult({playlists:value.playlists_created,tracks:value.tracks_added,failed:Math.max(0,preview.filter(i=>selected.includes(i.id)).reduce((n,i)=>n+i.count,0)-value.tracks_added)});setProgress(100)}else{const chosen=filePlaylists.filter(p=>selected.includes(p.id));let aggregate:ImportResult={playlists_created:0,tracks_added:0},failed=0;const source:TrackSource='spotify';for(let i=0;i<chosen.length;i+=1){try{const value=await api.playlists.importFile(chosen[i].title,source,chosen[i].tracks);aggregate={playlists_created:aggregate.playlists_created+value.playlists_created,tracks_added:aggregate.tracks_added+value.tracks_added};failed+=Math.max(0,chosen[i].tracks.length-value.tracks_added)}catch{failed+=chosen[i].tracks.length}setProgress(Math.round((i+1)/chosen.length*100))}setResult({playlists:aggregate.playlists_created,tracks:aggregate.tracks_added,failed})}setStage('result');onDone()}catch(e){setMessage(e instanceof Error?e.message:'Перенос не удался');setStage('preview')}}
+
+  return <div className="fuze-import"><input ref={inputRef} hidden type="file" accept=".csv,.json,text/csv" onChange={e=>{const f=e.target.files?.[0];if(f)void readFile(f);e.currentTarget.value=''}}/><AnimatePresence mode="wait" initial={false}>
+    {stage==='source'&&<motion.div key="sources" className="fuze-import-sources" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}><button onClick={()=>choose('yandex')}><YandexMark/><b>Яндекс Музыка</b><small>Плейлисты и Мне нравится</small></button><button onClick={()=>choose('spotify')}><SpotifyLogo weight="fill"/><b>Spotify</b><small>Через CSV из Exportify</small></button><button onClick={()=>choose('csv')}><FileCsv/><b>… / CSV</b><small>Универсальный импорт</small></button></motion.div>}
+    {stage==='connect'&&<motion.div key={`connect-${provider}`} className="fuze-import-flow" initial={{opacity:0,x:12}} animate={{opacity:1,x:0}} exit={{opacity:0}}><button className="fuze-import-back" onClick={reset}><ArrowLeft/> Другой источник</button>{provider==='yandex'?<><div className="fuze-import-heading"><YandexMark/><div><b>Подключите Яндекс Музыку</b><small>Войдите через Яндекс — access key подставится автоматически.</small></div></div><FuzeButton variant="primary" disabled={busy} onClick={()=>void signInWithYandex()}>{busy?<><Spinner className="animate-spin"/> Ожидаем вход…</>:<><SignIn/> Войти через Яндекс</>}</FuzeButton>{yandexConfirmation&&<a className="fuze-button fuze-button--secondary" href={yandexConfirmation.url} target="_blank" rel="noreferrer">Открыть страницу входа · код {yandexConfirmation.code} <ArrowSquareOut/></a>}<FuzeCheckbox checked={saveToken} onChange={e=>setSaveToken(e.target.checked)} label="Сохранить данные входа на этом устройстве"/><details className="fuze-import-manual"><summary>Ввести access key вручную</summary><FuzeField label="Access key"><FuzeInput type="password" autoComplete="off" value={token} onChange={e=>setToken(e.target.value)} placeholder="AQAAAA…"/></FuzeField><FuzeButton variant="secondary" disabled={busy||token.length<10} onClick={()=>void connect()}>Продолжить с ключом</FuzeButton></details>{localStorage.getItem(TOKEN_KEY)&&<FuzeButton variant="ghost" onClick={()=>{localStorage.removeItem(TOKEN_KEY);setToken('');setSaveToken(false);setMessage('Сохранённый ключ удалён.')}}>Удалить сохранённый ключ</FuzeButton>}</>:<>{provider==='spotify'&&<><div className="fuze-import-heading"><SpotifyLogo weight="fill"/><div><b>Экспортируйте плейлисты</b><small>Это займёт пару минут, доступ к Spotify внутри Fuze не нужен.</small></div></div><ol className="fuze-import-steps"><li>Откройте Exportify и войдите в Spotify.</li><li>Нажмите Export рядом с нужным плейлистом.</li><li>Вернитесь сюда и загрузите скачанный CSV.</li></ol><a className="fuze-button fuze-button--secondary" href="https://exportify.net/" target="_blank" rel="noreferrer">Открыть Exportify <ArrowSquareOut/></a></>} {provider==='csv'&&<div className="fuze-import-heading"><FileCsv/><div><b>Выберите CSV-файл</b><small>Распознаём Exportify и колонки title, track, artist, album, playlist.</small></div></div>}<FuzeButton variant="primary" disabled={busy} onClick={()=>inputRef.current?.click()}>{busy?'Читаем файл…':'Выбрать CSV'}</FuzeButton></>}{message&&<p className="fuze-alert" role="alert">{message}</p>}</motion.div>}
+    {stage==='preview'&&<motion.div key="preview" className="fuze-import-flow" initial={{opacity:0,x:12}} animate={{opacity:1,x:0}}><button className="fuze-import-back" onClick={reset}><ArrowLeft/> Другой источник</button><div><b>Найдено</b><p>Проверьте данные и выберите, что перенести.</p></div><div className="fuze-import-preview">{preview.map(item=><label key={item.id}><input type="checkbox" checked={selected.includes(item.id)} onChange={e=>setSelected(s=>e.target.checked?[...s,item.id]:s.filter(id=>id!==item.id))}/><span><b>{item.title}</b><small>{item.count} треков</small></span></label>)}</div><FuzeButton variant="primary" disabled={!selected.length} onClick={()=>void runImport()}>Перенести выбранное</FuzeButton>{message&&<p className="fuze-alert" role="alert">{message}</p>}</motion.div>}
+    {stage==='importing'&&<motion.div key="progress" className="fuze-import-progress" initial={{opacity:0}} animate={{opacity:1}}><Spinner className="animate-spin"/><b>Переносим вашу музыку…</b><progress value={progress} max="100"/><span>{progress}%</span><small>Отдельные ненайденные треки не остановят импорт.</small></motion.div>}
+    {stage==='result'&&<motion.div key="result" className="fuze-import-result" initial={{opacity:0,y:8}} animate={{opacity:1,y:0}}><Check weight="bold"/><b>Перенос завершён</b><div><span><strong>{result.playlists}</strong> плейлистов создано</span><span><strong>{result.tracks}</strong> треков перенесено</span><span><strong>{result.failed}</strong> не удалось перенести</span></div><FuzeButton variant="primary" onClick={reset}>Импортировать ещё</FuzeButton></motion.div>}
+  </AnimatePresence></div>
+}

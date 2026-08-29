@@ -1,100 +1,410 @@
+import asyncio
+import re
 import tempfile
+import unicodedata
+import uuid
+import inspect
+from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass
+from difflib import SequenceMatcher
 from pathlib import Path
 
 from integrations.cache import cache_get, cache_set
-from integrations.storage import get_presigned_url, upload_file
-from integrations.yandex import YandexTrackInfo, search_yandex
+from integrations.storage import get_object_metadata, get_presigned_url, upload_file
 from integrations.youtube import download_audio_to_file, search_youtube
+from core.settings import get_settings
+from core.instance_config import get_fuze_config
+from modules.admin.service import ConfigService, ConfigSnapshot
+from loguru import logger
 
-from .models import Track, TrackSource
+from .errors import (
+    AmbiguousTrackMatch,
+    InvalidTrackSource,
+    TrackDependencyUnavailable,
+    TrackCapabilityDisabled,
+    TrackNotFound,
+    TrackNotReady,
+    TrackStateConflict,
+)
+from .models import Track, TrackDownloadStatus, TrackSource
+from .providers import (
+    PROVIDERS,
+    ProviderResult,
+    SearchItem,
+    search_cached,
+    spotify_search_url,
+    youtube_id,
+)
 from .repository import TrackRepository
+
+_default_search_cached = search_cached
+
+
+@dataclass(frozen=True)
+class AcquireResult:
+    track: Track
+    newly_queued: bool
+
+
+@dataclass(frozen=True)
+class DownloadDescriptor:
+    track_id: int
+    url: str
+    content_type: str
+    content_length: int
+    etag: str | None
+    checksum: str | None
+    expires_at: datetime
+    media_version: str
+
+
+def _normalize(value: str) -> str:
+    value = unicodedata.normalize("NFKD", value).casefold()
+    return " ".join(re.findall(r"[\w]+", value))
+
+
+def _similarity(left: str, right: str) -> float:
+    normalized_left = _normalize(left)
+    normalized_right = _normalize(right)
+    if normalized_left and normalized_right and (
+        normalized_left in normalized_right or normalized_right in normalized_left
+    ):
+        return 1.0
+    return SequenceMatcher(None, normalized_left, normalized_right).ratio()
+
+
+def _validate_item(item: SearchItem) -> None:
+    if not item.source_id or len(item.source_id) > 128:
+        raise InvalidTrackSource("invalid_source_id")
+    if not item.title or len(item.title) > 255:
+        raise InvalidTrackSource("invalid_title")
+    if not item.artist or len(item.artist) > 255:
+        raise InvalidTrackSource("invalid_artist")
+    if item.album and len(item.album) > 255:
+        raise InvalidTrackSource("invalid_album")
+    if item.cover_url and len(item.cover_url) > 512:
+        raise InvalidTrackSource("invalid_cover_url")
+    max_duration_ms = get_settings().TRACK_MAX_DURATION_SECONDS * 1000
+    if item.duration_ms is not None and not (1 <= item.duration_ms <= max_duration_ms):
+        raise InvalidTrackSource("invalid_duration")
 
 
 class TracksService:
-    def __init__(self, repository: TrackRepository):
+    def __init__(
+        self,
+        repository: TrackRepository,
+        *,
+        enforce_config: bool = False,
+        config_service: ConfigService | None = None,
+    ):
         self.repository = repository
+        self.enforce_config = enforce_config
+        self.config_service = config_service
 
-    async def search(self, query: str) -> list[dict]:
-        yandex_results = await search_yandex(query)
+    async def _snapshot(self) -> ConfigSnapshot:
+        if self.config_service is not None:
+            return await self.config_service.get_snapshot()
+        return ConfigSnapshot(version=0, config=get_fuze_config(), secrets={})
 
-        tracks = []
-        for yt_info in yandex_results:
-            track = await self.repository.find_by_source(
-                TrackSource.YANDEX, yt_info.track_id
-            )
-            if not track:
-                track = await self.repository.create(
-                    title=yt_info.title,
-                    artist=yt_info.artist,
-                    album=yt_info.album,
-                    release_year=yt_info.year,
-                    duration_ms=yt_info.duration_ms,
-                    cover_url=yt_info.cover_url,
-                    source=TrackSource.YANDEX,
-                    source_id=yt_info.track_id,
+    async def search(self, query: str) -> dict:
+        names = ("yandex", "spotify", "youtube")
+        snapshot = await self._snapshot()
+        config = snapshot.config
+        provider_secrets = {
+            **snapshot.secrets,
+            "spotify_market": config.providers.spotify_market,
+        }
+        responses = await asyncio.gather(
+            *(
+                (
+                    search_cached(PROVIDERS[name], query, config, provider_secrets)
+                    if self.config_service is not None and search_cached is _default_search_cached
+                    else search_cached(PROVIDERS[name], query)
                 )
-            tracks.append({
-                "id": track.id,
-                "title": track.title,
-                "artist": track.artist,
-                "album": track.album,
-                "year": track.release_year,
-                "duration_ms": track.duration_ms,
-                "cover_url": track.cover_url,
-                "source_id": track.source_id,
-                "already_downloaded": track.storage_key is not None,
-            })
-        return tracks
+                if not self.enforce_config or getattr(config.providers, name)
+                else asyncio.sleep(0, result=ProviderResult([], status="disabled"))
+                for name in names
+            )
+        )
+        provider_results = dict(zip(names, responses, strict=True))
+        items_by_provider = {
+            name: response.items[:10] for name, response in provider_results.items()
+        }
+        existing = await self.repository.find_by_sources(
+            [
+                (TrackSource(name), item.source_id)
+                for name, items in items_by_provider.items()
+                for item in items
+            ]
+        )
+        rows: dict[str, list[dict]] = {name: [] for name in names}
+        for name, items in items_by_provider.items():
+            for item in items:
+                track = existing.get((TrackSource(name), item.source_id))
+                status = track.download_status.value if track else "remote"
+                rows[name].append(
+                    {
+                        "key": f"{name}:{item.source_id}",
+                        "track_id": track.id if track else None,
+                        "source": name,
+                        "capability": (
+                            "catalog"
+                            if not config.features.playback
+                            else "external" if name == "spotify" else "acquire"
+                        ),
+                        "availability": status,
+                        **item.__dict__,
+                        "already_downloaded": bool(
+                            track and track.download_status == TrackDownloadStatus.READY
+                        ),
+                    }
+                )
+        interleaved = [
+            rows[name][rank]
+            for rank in range(10)
+            for name in names
+            if rank < len(rows[name])
+        ]
+        return {
+            "data": interleaved,
+            "providers": {
+                name: {"status": result.status, "cached": result.cached}
+                for name, result in provider_results.items()
+            },
+            "spotify_search_url": (
+                spotify_search_url(query) if config.providers.spotify else None
+            ),
+        }
 
-    async def save_and_download(self, track_id: int) -> Track:
+    async def acquire(self, source: str, source_id: str) -> AcquireResult:
+        snapshot = await self._snapshot()
+        config = snapshot.config
+        if not config.features.playback:
+            raise TrackCapabilityDisabled("playback_disabled")
+        provider = PROVIDERS.get(source)
+        if provider is None:
+            raise InvalidTrackSource("unsupported_source")
+        canonical_id = (
+            youtube_id(source_id) if source == TrackSource.YOUTUBE.value else source_id
+        )
+        if not canonical_id:
+            raise InvalidTrackSource("invalid_source_id")
+        existing, should_enqueue = await self.repository.queue_existing(
+            TrackSource(source),
+            canonical_id,
+            max_attempts=get_settings().CELERY_TASK_MAX_RETRIES,
+        )
+        if existing is not None:
+            if should_enqueue:
+                await self._enqueue(existing)
+            elif existing.download_status == TrackDownloadStatus.FAILED:
+                raise TrackStateConflict(
+                    existing.download_error_code or "max_attempts_exhausted"
+                )
+            return AcquireResult(track=existing, newly_queued=should_enqueue)
+        if self.enforce_config and source in {"youtube", "yandex", "spotify"} and not getattr(
+            config.providers, source
+        ):
+            raise TrackCapabilityDisabled("provider_disabled")
+        if source == TrackSource.SPOTIFY.value:
+            # Spotify search results remain external-only, but imported playlist
+            # metadata already in our database can be resolved by the worker.
+            raise InvalidTrackSource("spotify_is_external_only")
+        try:
+            provider_secrets = {
+                **snapshot.secrets,
+                "spotify_market": config.providers.spotify_market,
+            }
+            accepts_secrets = len(inspect.signature(provider.get).parameters) >= 2
+            item = await provider.get(canonical_id, provider_secrets) if self.config_service is not None and accepts_secrets else await provider.get(canonical_id)
+        except InvalidTrackSource:
+            raise
+        except ValueError as exc:
+            raise TrackNotFound(str(exc)) from exc
+        except Exception as exc:
+            raise TrackDependencyUnavailable("provider_unavailable") from exc
+        _validate_item(item)
+        track, should_enqueue = await self.repository.upsert_and_queue(
+            max_attempts=get_settings().CELERY_TASK_MAX_RETRIES,
+            title=item.title,
+            artist=item.artist,
+            album=item.album,
+            release_year=item.year,
+            duration_ms=item.duration_ms,
+            cover_url=item.cover_url,
+            source=TrackSource(source),
+            source_id=item.source_id,
+            yt_url=item.external_url if source == TrackSource.YOUTUBE.value else None,
+            download_status=TrackDownloadStatus.NOT_REQUESTED,
+        )
+        if should_enqueue:
+            await self._enqueue(track)
+        return AcquireResult(track=track, newly_queued=should_enqueue)
+
+    async def _enqueue(self, track: Track) -> None:
+        task_id = str(uuid.uuid4())
+        try:
+            from worker.tasks import enqueue_track_download
+
+            await self.repository.set_task_id(track.id, task_id)
+            enqueue_track_download(track.id, task_id=task_id)
+        except Exception as exc:
+            await self.repository.mark_enqueue_failed(
+                track.id, "Message broker is unavailable"
+            )
+            logger.bind(track_id=track.id, stage="enqueue").warning(
+                "Track enqueue failed: {}", type(exc).__name__
+            )
+            raise TrackDependencyUnavailable("queue_unavailable") from exc
+        await self.repository.set_task_id(track.id, task_id)
+        track.download_task_id = task_id
+
+    async def get_track(self, track_id: int) -> Track:
         track = await self.repository.find_by_id(track_id)
-        if not track:
-            raise ValueError("Track not found")
-        if track.storage_key:
-            return track
-
-        cache_key = f"yt_search:{track.artist}:{track.title}"
-        cached = await cache_get(cache_key)
-
-        if cached and cached.get("url"):
-            yt_url = cached["url"]
-        else:
-            query = f"{track.artist} {track.title}"
-            results = await search_youtube(query, max_results=3)
-            if not results:
-                raise ValueError("No YouTube results found")
-            yt_url = results[0].url
-            await cache_set(cache_key, {"url": yt_url}, ttl_seconds=86400)
-
-        await self.repository.update(track, yt_url=yt_url)
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            local_path = await download_audio_to_file(yt_url, Path(tmp_dir))
-            object_name = f"{track.source.value}/{track.source_id}.opus"
-            await upload_file(local_path, object_name)
-
-        await self.repository.update(track, storage_key=object_name)
+        if track is None:
+            raise TrackNotFound()
         return track
 
-    async def get_stream_url(self, track_id: int) -> str | None:
-        track = await self.repository.find_by_id(track_id)
-        if not track or not track.storage_key:
-            return None
-        return await get_presigned_url(track.storage_key)
+    async def get_stream_url(self, track_id: int) -> str:
+        if self.enforce_config and not (await self._snapshot()).config.features.playback:
+            raise TrackCapabilityDisabled("playback_disabled")
+        track = await self.get_track(track_id)
+        if track.download_status != TrackDownloadStatus.READY or not track.storage_key:
+            raise TrackNotReady(
+                track.download_error_code or track.download_status.value
+            )
+        try:
+            return await get_presigned_url(track.storage_key)
+        except Exception as exc:
+            raise TrackDependencyUnavailable("storage_unavailable") from exc
 
-    async def save_yandex_track(self, yandex_track: YandexTrackInfo) -> Track:
-        existing = await self.repository.find_by_source(
-            TrackSource.YANDEX, yandex_track.track_id
+    async def get_download_descriptor(self, track_id: int) -> DownloadDescriptor:
+        if self.enforce_config and not (await self._snapshot()).config.features.playback:
+            raise TrackCapabilityDisabled("playback_disabled")
+        track = await self.get_track(track_id)
+        if track.download_status != TrackDownloadStatus.READY or not track.storage_key:
+            raise TrackNotReady(track.download_error_code or track.download_status.value)
+        ttl = get_settings().MINIO_PRESIGNED_TTL_SECONDS
+        try:
+            metadata, url = await asyncio.gather(
+                get_object_metadata(track.storage_key),
+                get_presigned_url(track.storage_key, expires_seconds=ttl),
+            )
+        except Exception as exc:
+            raise TrackDependencyUnavailable("storage_unavailable") from exc
+        version = metadata.checksum or metadata.etag or f"track-{track.id}"
+        return DownloadDescriptor(
+            track_id=track.id,
+            url=url,
+            content_type=metadata.content_type,
+            content_length=metadata.content_length,
+            etag=metadata.etag,
+            checksum=metadata.checksum,
+            expires_at=datetime.now(UTC) + timedelta(seconds=ttl),
+            media_version=version,
         )
-        if existing:
-            return existing
-        return await self.repository.create(
-            title=yandex_track.title,
-            artist=yandex_track.artist,
-            album=yandex_track.album,
-            release_year=yandex_track.year,
-            duration_ms=yandex_track.duration_ms,
-            cover_url=yandex_track.cover_url,
-            source=TrackSource.YANDEX,
-            source_id=yandex_track.track_id,
+
+    async def get_download_descriptors(self, track_ids: list[int]) -> list[DownloadDescriptor]:
+        # Preserve request order while avoiding duplicate object-store calls.
+        unique_ids = list(dict.fromkeys(track_ids))
+        return await asyncio.gather(*(self.get_download_descriptor(track_id) for track_id in unique_ids))
+
+
+class TrackDownloadProcessor:
+    """Worker-only media pipeline; API requests never call this class."""
+
+    def __init__(self, repository: TrackRepository, config_service: ConfigService | None = None):
+        self.repository = repository
+        self.config_service = config_service
+
+    async def process(self, track_id: int, task_id: str) -> bool:
+        config = (
+            (await self.config_service.get_snapshot()).config
+            if self.config_service is not None
+            else get_fuze_config()
         )
+        if not config.features.playback:
+            await self.repository.mark_queued_failed(
+                track_id, "playback_disabled", "Playback is disabled"
+            )
+            return False
+        track = await self.repository.claim_download(
+            track_id,
+            task_id,
+            lease_seconds=get_settings().TRACK_DOWNLOAD_LEASE_SECONDS,
+        )
+        if track is None:
+            return False
+        try:
+            log = logger.bind(track_id=track.id, stage="download")
+            log.info("Track download started")
+            yt_url = await self._resolve_youtube_url(track)
+            with tempfile.TemporaryDirectory(prefix="fuze-track-") as tmp_dir:
+                local_path = await download_audio_to_file(yt_url, Path(tmp_dir))
+                if not local_path.is_file() or local_path.stat().st_size <= 0:
+                    raise RuntimeError("encoder produced an empty file")
+                object_name = f"{track.source.value}/{track.source_id}.opus"
+                await upload_file(local_path, object_name, content_type="audio/ogg")
+            await self.repository.mark_ready(track.id, task_id, object_name, yt_url)
+            log.bind(stage="ready").info("Track download completed")
+            return True
+        except AmbiguousTrackMatch as exc:
+            await self.repository.mark_failed(track.id, task_id, exc.code, exc.message)
+            return False
+        except Exception as exc:
+            await self.repository.mark_failed(
+                track.id,
+                task_id,
+                "download_failed",
+                f"Download failed: {type(exc).__name__}",
+            )
+            logger.bind(track_id=track.id, stage="failed").warning(
+                "Track download failed: {}", type(exc).__name__
+            )
+            raise
+
+    async def _resolve_youtube_url(self, track: Track) -> str:
+        if track.source == TrackSource.YOUTUBE:
+            return track.yt_url or f"https://www.youtube.com/watch?v={track.source_id}"
+        key = f"yt_match:v4:{_normalize(track.artist)}:{_normalize(track.title)}"
+        try:
+            cached = await cache_get(key)
+        except Exception:
+            cached = None
+        if cached:
+            if cached.get("negative"):
+                raise AmbiguousTrackMatch()
+            if cached.get("url"):
+                return str(cached["url"])
+        results = await search_youtube(f"{track.artist} {track.title}", max_results=5)
+        scored: list[tuple[float, object]] = []
+        for candidate in results:
+            duration_ms = int(candidate.duration * 1000)
+            duration_limit = max(10_000, int((track.duration_ms or duration_ms) * 0.08))
+            duration_ok = (
+                track.duration_ms is None
+                or abs(duration_ms - track.duration_ms) <= duration_limit
+            )
+            title_score = _similarity(track.title, candidate.title)
+            artist_score = max(
+                _similarity(track.artist, candidate.uploader or candidate.title),
+                _similarity(track.artist, candidate.title),
+            )
+            if duration_ok and title_score >= 0.8 and artist_score >= 0.8:
+                scored.append(((title_score + artist_score) / 2, candidate))
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        # Music searches commonly return several uploads of the same recording.
+        # Once title, artist and duration have all passed the strict filters above,
+        # a close runner-up is not ambiguity: use the provider's relevance order.
+        if not scored:
+            try:
+                await cache_set(key, {"negative": True}, ttl_seconds=120)
+            except Exception:
+                pass
+            raise AmbiguousTrackMatch()
+        url = scored[0][1].url
+        try:
+            await cache_set(key, {"url": url}, ttl_seconds=86400)
+        except Exception:
+            pass
+        return url

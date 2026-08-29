@@ -1,9 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from core.enums import UserRole
-from .dependencies import get_user_service, require_role
+from .dependencies import get_user_service
+from core.dependencies import require_role
 from .module import module
-from .schemas import UserCreate, UserRead, UsersResponse, UserUpdate
+from .schemas import (
+    KeyUserCreate,
+    KeyUserCreated,
+    UserCreate,
+    UserRead,
+    UsersResponse,
+    UserUpdate,
+)
 from .service import UserService
 
 router = APIRouter(
@@ -13,20 +21,21 @@ router = APIRouter(
 )
 
 
-@router.get("/", response_model=UsersResponse)
+@router.get("", response_model=UsersResponse)
 async def list_users(
-        page: int = 1,
-        size: int = 10,
-        user_service: UserService = Depends(get_user_service),
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=10, ge=1, le=100),
+    search: str = Query(default="", max_length=100),
+    user_service: UserService = Depends(get_user_service),
 ):
-    users, total = await user_service.list_users(page=page, size=size)
+    users, total = await user_service.list_users(page=page, size=size, search=search)
     return UsersResponse(data=users, total=total, page=page, size=size)
 
 
 @router.get("/{user_id}", response_model=UserRead)
 async def get_user(
-        user_id: int,
-        user_service: UserService = Depends(get_user_service),
+    user_id: int,
+    user_service: UserService = Depends(get_user_service),
 ):
     user = await user_service.get_user_by_id(user_id)
     if not user:
@@ -34,10 +43,21 @@ async def get_user(
     return user
 
 
-@router.post("/", response_model=UserRead, status_code=201)
+@router.post("/key", response_model=KeyUserCreated, status_code=201)
+async def create_key_user(
+    data: KeyUserCreate,
+    user_service: UserService = Depends(get_user_service),
+):
+    user, access_key = await user_service.create_key_user(
+        name=data.name, role=data.role, label=data.label
+    )
+    return KeyUserCreated(user=UserRead.model_validate(user), access_key=access_key)
+
+
+@router.post("", response_model=UserRead, status_code=201)
 async def create_user(
-        data: UserCreate,
-        user_service: UserService = Depends(get_user_service),
+    data: UserCreate,
+    user_service: UserService = Depends(get_user_service),
 ):
     user = await user_service.create_user(
         email=data.email,
@@ -50,9 +70,9 @@ async def create_user(
 
 @router.patch("/{user_id}", response_model=UserRead)
 async def update_user(
-        user_id: int,
-        data: UserUpdate,
-        user_service: UserService = Depends(get_user_service),
+    user_id: int,
+    data: UserUpdate,
+    user_service: UserService = Depends(get_user_service),
 ):
     user = await user_service.update_user(user_id, data)
     if not user:
@@ -62,8 +82,8 @@ async def update_user(
 
 @router.delete("/{user_id}", status_code=204)
 async def delete_user(
-        user_id: int,
-        user_service: UserService = Depends(get_user_service),
+    user_id: int,
+    user_service: UserService = Depends(get_user_service),
 ):
     deleted = await user_service.delete_user(user_id)
     if not deleted:

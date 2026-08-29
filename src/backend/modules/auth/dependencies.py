@@ -1,30 +1,19 @@
-from authx import TokenPayload
-from core.security import jwt_security
-from fastapi import Depends, Response
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.auth.schemas import UserLogin
+from database.dependencies import get_db
+from modules.auth.repository import AuthSessionRepository
 from modules.auth.service import AuthService
-from modules.users.dependencies import get_user_service
-from modules.users.models import User
+from modules.users.repository import UserRepository
 from modules.users.service import UserService
+from modules.admin.service import ConfigService
 
 
 def get_auth_service(
-    user_service: UserService = Depends(get_user_service),
+    db: AsyncSession = Depends(get_db),
 ) -> AuthService:
-    return AuthService(user_service)
-
-
-async def get_current_user(
-    token: TokenPayload = Depends(jwt_security),
-    user_service: UserService = Depends(get_user_service),
-) -> User:
-    user_id = int(token.sub)
-    user = await user_service.get_user_by_id(user_id)
-    return user
-
-
-
-
-
-
+    return AuthService(
+        UserService(UserRepository(db)),
+        AuthSessionRepository(db),
+        ConfigService(db),
+    )

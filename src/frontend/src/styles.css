@@ -1,0 +1,285 @@
+@import "tailwindcss";
+:root {
+  --font-geist: 'Geist Variable';
+  --font-geist-mono: 'Geist Mono Variable';
+}
+
+@theme {
+  --color-bg: #090a09;
+  --color-surface: #101210;
+  --color-surface-raised: #171917;
+  --color-surface-hover: #20231f;
+  --color-border: #2a2d29;
+  --color-border-thick: #3a3d38;
+  --color-text-primary: #e8e5dd;
+  --color-text-secondary: #979990;
+  --color-text-muted: #686b65;
+  --color-accent: #cf935f;
+  --color-accent-dim: #a9784e;
+  --color-hover: #131513;
+  --color-hover-strong: #171917;
+
+  --font-sans: var(--font-geist), -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), 'SF Mono', 'JetBrains Mono', ui-monospace, monospace;
+
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 3px;
+  --radius-xl: 3px;
+  --radius-pill: 9999px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 350ms;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+.desktop-window {
+  --desktop-titlebar-height: 36px;
+  height: 100dvh;
+  overflow: hidden;
+  background: #090a09;
+}
+
+.desktop-window__content {
+  position: fixed;
+  inset: var(--desktop-titlebar-height) 0 0;
+  overflow: hidden;
+  transform: translateZ(0);
+}
+
+.desktop-titlebar {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 10000;
+  height: var(--desktop-titlebar-height);
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #242723;
+  background: #101210;
+  color: #979990;
+  user-select: none;
+}
+
+.desktop-titlebar__identity {
+  height: 100%;
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-left: 13px;
+  font: 500 10px var(--font-geist-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.desktop-titlebar__mark {
+  width: 8px;
+  height: 8px;
+  border: 1px solid #cf935f;
+  background: #cf935f22;
+  transform: rotate(45deg);
+}
+
+.desktop-titlebar__controls {
+  height: 100%;
+  display: flex;
+}
+
+.desktop-titlebar__controls button {
+  width: 46px;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #858980;
+  transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.desktop-titlebar__controls button:hover {
+  background: #20231f;
+  color: #e8e5dd;
+}
+
+.desktop-titlebar__controls .desktop-titlebar__close:hover {
+  background: #a8463d;
+  color: #fff;
+}
+
+.desktop-titlebar__restore {
+  position: relative;
+  width: 13px;
+  height: 13px;
+}
+
+.desktop-titlebar__restore svg {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+}
+
+.desktop-titlebar__restore::before {
+  content: '';
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  top: 0;
+  right: 0;
+  border: 1px solid currentColor;
+}
+
+.desktop-window__content .fuze-service-screen,
+.desktop-window__content .fuze-service-state {
+  min-height: 100%;
+}
+
+body {
+  background: var(--fuze-bg, #090a09);
+  color: var(--fuze-text, #e8e5dd);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  user-select: text;
+}
+
+img,
+svg {
+  display: block;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: 0;
+  background: 0;
+  color: inherit;
+  padding: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+input {
+  font: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  margin-top: -4px;
+  opacity: 0;
+  transition: opacity var(--duration-fast) ease;
+}
+
+input[type="range"]:hover::-webkit-slider-thumb {
+  opacity: 1;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+html, body { min-height: 100%; }
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  overscroll-behavior: none;
+}
+@media (hover: none), (pointer: coarse) {
+  button, a, input, select { touch-action: manipulation; }
+}
+
+:focus-visible { outline: 2px solid var(--fuze-accent, #cf935f); outline-offset: 3px; }
+@media (hover: none), (pointer: coarse) { button, a, input, select { min-width:44px;min-height:44px; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important; } }
+/* Playlist collection context menu */
+.playlist-menu-dismiss{position:fixed;inset:0;z-index:999;cursor:default}
+.playlist-context-menu__danger{color:#e78b82!important}.playlist-context-menu__danger svg{color:#d36f66!important}
