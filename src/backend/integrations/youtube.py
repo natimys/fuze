@@ -5,7 +5,7 @@ from asyncyt import AsyncYT, DownloadConfig, VideoInfo
 from asyncyt.encoding import AudioEncodingConfig, EncodingConfig
 from asyncyt.enums import AudioCodec, AudioFormat, Quality
 
-from core.settings import BACKEND_DIR
+from core.settings import BACKEND_DIR, get_settings
 
 _downloader: AsyncYT | None = None
 _downloader_lock = asyncio.Lock()
@@ -44,6 +44,7 @@ async def search_youtube(query: str, max_results: int = 5) -> list[VideoInfo]:
 
 async def download_audio_to_file(url: str, dest_dir: Path) -> Path:
     yt = await get_downloader()
+    proxy = get_settings().YTDLP_PROXY
     encode_config = EncodingConfig(
         audio=AudioEncodingConfig(codec=AudioCodec.OPUS, bitrate="192k")
     )
@@ -53,6 +54,7 @@ async def download_audio_to_file(url: str, dest_dir: Path) -> Path:
         extract_audio=True,
         audio_format=AudioFormat.OPUS,
         encoding=encode_config,
+        proxy=proxy.get_secret_value() if proxy else None,
         custom_options={
             # YouTube now requires its player challenge to be evaluated by a
             # supported JavaScript runtime. AsyncYT discovers Node, but does

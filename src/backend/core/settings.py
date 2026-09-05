@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     CELERY_TASK_TIME_LIMIT_SECONDS: int = 900
     TRACK_MAX_DURATION_SECONDS: int = 1800
     TRACK_DOWNLOAD_LEASE_SECONDS: int = 1200
+    YTDLP_PROXY: SecretStr | None = None
 
     DEBUG: bool = False
 
