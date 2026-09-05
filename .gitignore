@@ -43,6 +43,7 @@ next-env.d.ts
 
 # Reports, temporary files, and editor backups
 artifacts/
+audits/
 *~
 .*.un~
 .DS_Store
