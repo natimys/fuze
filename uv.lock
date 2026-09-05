@@ -861,7 +861,7 @@ wheels = [
 
 [[package]]
 name = "fuze"
-version = "0.1.0"
+version = "0.5.15"
 source = { editable = "." }
 dependencies = [
     { name = "aioboto3" },

@@ -1,6 +1,6 @@
 [project]
 name = "Fuze"
-version = "0.1.0"
+version = "0.5.15"
 description = "Self-hosted music streaming platform that unifies Spotify, YouTube Music, Yandex Music and other sources"
 requires-python = ">=3.12"
 
