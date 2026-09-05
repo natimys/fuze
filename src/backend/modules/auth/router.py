@@ -8,9 +8,9 @@ from core.security import (
     refresh_token_required,
     unset_legacy_refresh_cookie,
 )
-from .dependencies import (
-    get_auth_service,
-)
+from .dependencies import get_auth_service
+from ..users.dependencies import get_user_service
+from ..users.service import UserService
 from .module import module
 from .schemas import KeyLogin, KeyRegistration, UserPublic, UserRegister, UserLogin
 from .service import AuthService
@@ -85,6 +85,19 @@ async def logout(
     auth_service: AuthService = Depends(get_auth_service),
 ):
     await auth_service.revoke(payload)
+    unset_legacy_refresh_cookie(response)
+    jwt_security.unset_refresh_cookies(response)
+    jwt_security.unset_access_cookies(response)
+
+
+@router.delete("/account", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_account(
+    response: Response,
+    user: User = Depends(current_active_user),
+    user_service: UserService = Depends(get_user_service),
+):
+    """Delete the current identity and all database rows linked by cascade."""
+    await user_service.delete_user(user.id)
     unset_legacy_refresh_cookie(response)
     jwt_security.unset_refresh_cookies(response)
     jwt_security.unset_access_cookies(response)

@@ -55,7 +55,17 @@ async function errorFrom(res: Response): Promise<ApiError> {
     if (value && typeof value === 'object' && 'msg' in value && typeof value.msg === 'string') return value.msg
     return null
   }
-  return new ApiError(describe(body.detail) ?? describe(body.message) ?? `Request failed: ${res.status}`, res.status)
+  const publicMessage = describe(body.detail) ?? describe(body.message)
+  const fallback = res.status >= 500
+    ? 'The Fuze instance could not complete this request. Please retry; if it continues, contact the instance administrator.'
+    : res.status === 404
+      ? 'The requested item was not found.'
+      : res.status === 403
+        ? 'You do not have permission to do this.'
+        : res.status === 429
+          ? 'Too many requests. Wait a moment and try again.'
+          : 'The request could not be completed. Please check the form and try again.'
+  return new ApiError(publicMessage && !/^request failed(?::|$)/i.test(publicMessage) ? publicMessage : fallback, res.status)
 }
 
 async function tryRefresh(): Promise<boolean> {
@@ -101,6 +111,7 @@ export const api = {
     login: (data: UserLogin) => request<UserPublic>('/auth/login', { method: 'POST', body: JSON.stringify(data) }, false),
     keyLogin: (data: KeyLogin) => request<UserPublic>('/auth/key-login', { method: 'POST', body: JSON.stringify(data) }, false),
     logout: () => request<void>('/auth/logout', { method: 'POST' }),
+    deleteAccount: () => request<void>('/auth/account', { method: 'DELETE' }),
     me: () => request<UserPublic>('/auth/me'),
   },
   tracks: {

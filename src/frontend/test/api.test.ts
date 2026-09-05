@@ -32,6 +32,11 @@ describe('API errors', () => {
     )
   })
 
+  it('replaces bare server status errors with a useful user message', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 500 }))
+    await expect(api.config()).rejects.toMatchObject({ status: 500, message: expect.not.stringContaining('Request failed') })
+  })
+
   it('shares one refresh and retries each protected request only once', async () => {
     let refreshCalls = 0
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {

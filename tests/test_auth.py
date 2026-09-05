@@ -178,6 +178,15 @@ async def test_logout_revokes_session_and_clears_cookies(existing_user):
     assert "refresh_token" not in existing_user.cookies
 
 
+async def test_user_can_delete_own_account_and_cookies(existing_user):
+    response = await existing_user.delete("/api/v1/auth/account")
+
+    assert response.status_code == 204
+    assert "access_token" not in existing_user.cookies
+    assert "refresh_token" not in existing_user.cookies
+    assert (await existing_user.get("/api/v1/auth/me")).status_code == 401
+
+
 async def test_login_rejects_invalid_password_shape(client):
     response = await client.post(
         "/api/v1/auth/login",
